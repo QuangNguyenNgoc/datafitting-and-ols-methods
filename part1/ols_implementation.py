@@ -7,7 +7,10 @@ tính VIF và minh họa định lý Gauss-Markov.
 
 import numpy as np
 import scipy.stats
-
+import pandas as pd
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+import statsmodels.api as sm
+from statsmodels.stats.outliers_influence import variance_inflation_factor
 def ols_fit(X, y):
     """
     1. Tính vector hệ số beta_hat và phương sai sai số sigma2_hat.
@@ -16,8 +19,8 @@ def ols_fit(X, y):
         beta_hat = (X^T X)^{-1} X^T y
         sigma2_hat = RSS / (n - p)
     """
-    # TODO: Implement OLS fitting logic
-    pass
+    model = sm.OLS(y, X).fit()
+    return np.array(model.params)
 
 def hat_matrix(X):
     """
@@ -27,8 +30,8 @@ def hat_matrix(X):
         H = X(X^T X)^{-1} X^T
     Điều kiện lũy đẳng: H @ H = H
     """
-    # TODO: Implement hat matrix calculation and idempotency check
-    pass
+    X_mat = np.array(X)
+    return X_mat @ np.linalg.pinv(X_mat)
 
 def model_metrics(y, y_hat, p):
     """
@@ -39,8 +42,25 @@ def model_metrics(y, y_hat, p):
        - R^2 hiệu chỉnh (Adjusted R^2)
        - F-statistic
     """
-    # TODO: Implement metrics calculation
-    pass
+    y_arr = np.array(y).flatten()
+    y_hat_arr = np.array(y_hat).flatten()
+    n = len(y_arr)
+    
+    mae = mean_absolute_error(y_arr, y_hat_arr)
+    rmse = np.sqrt(mean_squared_error(y_arr, y_hat_arr))
+    r2 = r2_score(y_arr, y_hat_arr)
+    
+    if n - p - 1 > 0:
+        adj_r2 = 1 - (1 - r2) * (n - 1) / (n - p - 1)
+    else:
+        adj_r2 = np.nan
+        
+    return {
+        'MAE': mae,
+        'RMSE': rmse,
+        'R2': r2,
+        'Adj_R2': adj_r2
+    }
 
 def coef_inference(X, y, beta_hat, sigma2):
     """
@@ -50,8 +70,16 @@ def coef_inference(X, y, beta_hat, sigma2):
        - p-values
        - Khoảng tin cậy (Confidence Intervals) 95%
     """
-    # TODO: Implement coefficient inference logic
-    pass
+    model = sm.OLS(y, X).fit()
+    
+    inference_df = pd.DataFrame({
+        'Coefficient': model.params,
+        'Std_Error': model.bse,
+        't_stat': model.tvalues,
+        'p_value': model.pvalues
+    })
+    
+    return inference_df
 
 def vif(X):
     """
@@ -60,8 +88,20 @@ def vif(X):
        
     Công thức: VIF_j = 1 / (1 - R^2_j)
     """
-    # TODO: Implement VIF calculation
-    pass
+    X_df = pd.DataFrame(X)
+    vif_data = pd.DataFrame()
+    vif_data["Feature"] = X_df.columns
+    
+    vif_values = []
+    for i in range(X_df.shape[1]):
+        try:
+            val = variance_inflation_factor(X_df.values, i)
+        except Exception:
+            val = np.inf
+        vif_values.append(val)
+        
+    vif_data["VIF_Score"] = vif_values
+    return vif_data
 
 def gauss_markov_simulation(n_simulations=1000, n_samples=100):
     """
