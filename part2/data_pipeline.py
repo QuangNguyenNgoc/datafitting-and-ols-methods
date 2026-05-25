@@ -23,7 +23,9 @@ def load_data(filepath: str) -> pd.DataFrame:
     raise NotImplementedError
 
 
-def train_test_split(X: np.ndarray, y: np.ndarray, test_size: float = 0.2, random_state: int = None) -> tuple:
+def train_test_split(
+    X: np.ndarray, y: np.ndarray, test_size: float = 0.2, random_state: int = None
+) -> tuple:
     """Splits the data into training and testing sets.
 
     Args:
@@ -42,59 +44,68 @@ def train_test_split(X: np.ndarray, y: np.ndarray, test_size: float = 0.2, rando
 
 
 class DataPipeline:
-    """A scikit-learn style data preprocessing pipeline.
-    
-    This class handles missing values, feature scaling, and categorical encoding.
-    It maintains state from the training data to ensure no data leakage occurs
-    when transforming the test data.
-    
-    Attributes:
-        scalers (dict): Stored parameters for scaling (e.g., mean and std for each column).
-        imputation_values (dict): Stored values for filling missing data (e.g., column means or modes).
-        encoded_columns (list): Stored column names after one-hot encoding to ensure consistency.
-    """
-
-    def __init__(self):
-        """Initializes the DataPipeline with empty state dictionaries."""
+    def __init__(self, drop_columns: list = None):
+        """
+        Tham số drop_columns nhận danh sách cột cần loại bỏ từ DA (Sync Point 2)
+        """
+        self.drop_columns = drop_columns if drop_columns is not None else []
         self.scalers = {}
         self.imputation_values = {}
         self.encoded_columns = []
 
-    def fit_transform(self, df: pd.DataFrame) -> np.ndarray:
-        """Fits the pipeline to the data and then transforms it.
-        
-        Calculates and stores imputation values, scaling parameters, and 
-        encoding mapping based on the provided dataframe, and then applies 
-        these transformations to the dataframe.
+    def _prepare_xy(self, df: pd.DataFrame):
+        """Hàm nội bộ tách biệt X (đặc trưng) và y (mục tiêu), đồng thời loại bỏ cột xấu"""
+        # 1. Loại bỏ các cột đa cộng tuyến theo yêu cầu của DA
+        df_clean = df.drop(
+            columns=[col for col in self.drop_columns if col in df.columns]
+        )
 
-        Args:
-            df (pd.DataFrame): The training dataframe to fit and transform.
+        # 2. Tách biệt X và y
+        if "Price" in df_clean.columns:
+            X_df = df_clean.drop(columns=["Price"])
+            y_arr = df_clean["Price"].to_numpy()
+        else:
+            X_df = df_clean
+            y_arr = None
+        return X_df, y_arr
 
-        Returns:
-            np.ndarray: The transformed training data as a NumPy array.
+    def _impute_missing(self, X_df: pd.DataFrame, is_train: bool) -> pd.DataFrame:
+        # Thực thi KNN Imputer dựa trên trạng thái is_train
+        return X_df
 
-        Raises:
-            NotImplementedError: If the method is not yet implemented.
-        """
-        raise NotImplementedError
+    def _engineer_and_encode(self, X_df: pd.DataFrame, is_train: bool) -> pd.DataFrame:
+        # Thực thi One-Hot Encoding + Biến đổi phi tuyến (Log/Age)
+        return X_df
 
-    def transform(self, df: pd.DataFrame) -> np.ndarray:
-        """Transforms the data using the previously fitted state.
-        
-        Applies imputation, scaling, and encoding using the parameters
-        stored in `self.imputation_values`, `self.scalers`, and `self.encoded_columns`
-        to prevent data leakage into the test set.
+    def _scale_features(self, X_df: pd.DataFrame, is_train: bool) -> pd.DataFrame:
+        # Thực thi Z-score Standardization
+        return X_df
 
-        Args:
-            df (pd.DataFrame): The test/unseen dataframe to transform.
+    def fit_transform(self, df: pd.DataFrame) -> tuple:
+        """Chỉ chạy trên tập Train thô"""
+        X_df, y_train = self._prepare_xy(df)
 
-        Returns:
-            np.ndarray: The transformed data as a NumPy array.
+        # Chạy xuyên qua hệ thống ống dẫn xử lý
+        X_df = self._impute_missing(X_df, is_train=True)
+        X_df = self._engineer_and_encode(X_df, is_train=True)
+        X_df = self._scale_features(X_df, is_train=True)
 
-        Raises:
-            NotImplementedError: If the method is not yet implemented.
-        """
-        raise NotImplementedError
+        # Lưu lại danh sách cột sau khi One-Hot để transform áp dụng theo
+        self.encoded_columns = X_df.columns.tolist()
+        return X_df.to_numpy(), y_train
+
+    def transform(self, df: pd.DataFrame) -> tuple:
+        """Chỉ chạy trên tập Test thô - Tuyệt đối đóng băng trạng thái"""
+        X_df, y_test = self._prepare_xy(df)
+
+        X_df = self._impute_missing(X_df, is_train=False)
+        X_df = self._engineer_and_encode(X_df, is_train=False)
+
+        # Đồng bộ hóa số lượng cột của tập Test dựa trên tập Train cũ
+        X_df = X_df.reindex(columns=self.encoded_columns, fill_value=0)
+
+        X_df = self._scale_features(X_df, is_train=False)
+        return X_df.to_numpy(), y_test
 
 
 if __name__ == "__main__":
