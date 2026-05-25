@@ -55,6 +55,7 @@ metadata: dict         # {
 ## Persona 2: ML Modeler (Member B)
 
 > **Ownership:** `model_comparison.py`, `cross_validation.py` (from Part 1)
+
 > **Core Responsibility:** Train all regression models using self-written functions from Part 1, tune hyperparameters, and output a ranked performance comparison.
 
 ### Tasks
@@ -110,19 +111,20 @@ comparison_df: pd.DataFrame # The formatted comparison table
 ## Persona 3: Analyst & Reporter (Member C)
 
 > **Ownership:** `part2_notebook.ipynb`, `advanced_methods.py`, report sections
-> **Core Responsibility:** Visualize, interpret, and write the narrative that ties the math to the real-world meaning.
+> **Core Responsibility:** Make data-driven feature selection decisions, visualize results, and write the narrative that ties the math to the real-world meaning.
 
 ### Tasks
 
-| #   | Task                                                                                                                                        | Output                      |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
-| C1  | Plot the 4 residual diagnostic plots for the best model (Residuals vs Fitted, Q-Q, Scale-Location, Residuals vs Leverage)                   | 4-panel figure              |
-| C2  | Plot standardized regression coefficients as a horizontal bar chart for feature importance                                                  | Feature importance figure   |
-| C3  | Plot the Ridge Trace ($\lambda$ vs coefficients) and the CV error curve                                                                     | 2 figures                   |
-| C4  | Interpret the comparison table: why did Ridge outperform OLS? What does $\lambda$ do to multicollinear features like `Rooms` vs `Bedroom2`? | Written analysis paragraphs |
-| C5  | Interpret the Gauss-Markov test results: does heteroscedasticity exist? Is the normality assumption violated?                               | Written discussion          |
-| C6  | Write the **Discussion & Conclusion** section: connect the math to the Melbourne housing market context                                     | Final report section        |
-| C7  | (Bonus) Implement and evaluate Kernel Ridge or Bayesian Linear Regression in `advanced_methods.py`                                          | Advanced model results      |
+| #   | Task                                                                                                                                                                                                            | Corresponding Tool/Function                               | Output                                       |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | -------------------------------------------- |
+| C1  | **[Phase 1]** Analyze the initial diagnostics (VIF, p-values) provided by Member B to detect multicollinearity. Decide which features to drop and instruct Member A to update the `drop_columns` configuration. | Jupyter Notebook (Reviewing B's `run_diagnostics` output) | Finalized `drop_columns` list (Sync Point 2) |
+| C2  | **[Phase 2]** Plot the 4 residual diagnostic plots for the best model to evaluate Gauss-Markov assumptions (Residuals vs Fitted, Q-Q, Scale-Location, Residuals vs Leverage).                                   | `residual_plots()` (from Part 1)                          | 4-panel diagnostic figure                    |
+| C3  | Plot standardized regression coefficients as a horizontal bar chart to illustrate feature importance.                                                                                                           | `plot_coefficients()`                                     | Feature importance figure                    |
+| C4  | Plot the Ridge Trace ($\lambda$ vs coefficients) and the CV error curve to demonstrate the regularization effect.                                                                                               | Matplotlib / Seaborn                                      | 2 hyperparameter figures                     |
+| C5  | Interpret the evaluation metrics and the comparison table. Explain mathematically and practically why Ridge outperformed (or underperformed) OLS.                                                               | Written Analysis (Markdown/Typst)                         | Analytical paragraphs                        |
+| C6  | Interpret the Gauss-Markov test results (e.g., Breusch-Pagan). Discuss the presence of heteroscedasticity and its impact on the model's reliability for high-priced houses.                                     | Written Analysis (Markdown/Typst)                         | Statistical discussion                       |
+| C7  | Write the **Discussion & Conclusion** section: connect the mathematical findings back to the Melbourne housing market context.                                                                                  | Written Analysis (Markdown/Typst)                         | Final report section                         |
+| C8  | **[Bonus]** Implement the core mathematical logic for Kernel Ridge or Bayesian Linear Regression. Handoff this function to Member B to execute inside the `train_models` pipeline.                              | `advanced_methods.py`                                     | Advanced model functions                     |
 
 ### Deliverables (Final Output)
 
