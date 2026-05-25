@@ -59,14 +59,15 @@ metadata: dict         # {
 
 ### Tasks
 
-| #   | Task                                                                                                      | Output                                      |
-| --- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| B1  | Execute `ols_fit(X_train, y_train)` on the full design matrix as the baseline OLS model                   | `beta_hat_ols`, `y_pred_ols`                |
-| B2  | Execute `ols_fit(X_train_best, y_train)` on the selected-feature matrix as the feature-selected OLS model | `beta_hat_best`, `y_pred_best`              |
-| B3  | Run `kfold_cv` on $X_{train\_best}$ to find the optimal Ridge hyperparameter $\lambda$                    | `best_lambda`, CV score curve               |
-| B4  | Execute `ridge_fit(X_train_best, y_train, lambda_best)` to obtain the optimized Ridge coefficients        | `beta_hat_ridge`, `y_pred_ridge`            |
-| B5  | Execute the advanced `kernel_ridge_fit` model from `advanced_methods.py` on the dataset                   | `y_pred_kernel_ridge`, kernel model outputs |
-| B6  | Compute MAE, RMSE, and $R^2$ on the test set for all 4 models and export a ranked comparison DataFrame    | Ranked comparison DataFrame                 |
+| #   | Task                                                                                                                                               | Corresponding Function                                                      | Output                                                         |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| B1  | Run initial statistical diagnostics on the raw training data to detect multicollinearity and evaluate feature significance for the selection gate. | `run_diagnostics()` (invokes Part 1 `ols_fit`, `vif`, `coef_inference`)     | Initial VIF table, t-statistics, and p-values for Phase 1 loop |
+| B2  | Train the baseline OLS model on the full raw feature set inside the main training pipeline execution.                                              | `train_models()` (invokes Part 1 `ols_fit`)                                 | Baseline `beta_hat_ols` and raw test predictions               |
+| B3  | Train the feature-selected OLS model on the optimized feature set ($X_{train\_best}$) after removing collinear variables.                          | `train_models()` (invokes Part 1 `ols_fit`)                                 | Selected `beta_hat_best` and optimized test predictions        |
+| B4  | Tune the Ridge regression hyperparameter $\lambda$ using K-Fold Cross-Validation on the best feature matrix.                                       | `hyperparameter_tuning()` (invokes Part 1 `kfold_cv`)                       | `best_lambda` and CV error curve data points                   |
+| B5  | Train the optimized Ridge Regression model on the best feature matrix using the tuned $\lambda$ parameter.                                         | `train_models()` (invokes Part 1 `ridge_fit`)                               | Optimized `beta_hat_ridge` and test predictions                |
+| B6  | Train the advanced non-linear Kernel Ridge Regression model as the competitive non-linear baseline.                                                | `train_models()` (invokes `kernel_ridge_fit` from `advanced_methods.py`)    | `y_pred_kernel_ridge` and non-linear kernel artifacts          |
+| B7  | Compute test performance metrics (MAE, RMSE, $R^2$) for all models and generate the final evaluation ranking.                                      | `train_models()` (utilizes nested `compute_metrics`) & `comparison_table()` | Ranked performance comparison DataFrame for Member C           |
 
 ### Deliverables (Handover to Member C)
 
