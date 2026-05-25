@@ -20,32 +20,32 @@ graph LR
 ## Persona 1: Data Engineer (Member A)
 
 > **Ownership:** `data_pipeline.py`, `part2/data/`
-> **Core Responsibility:** Deliver a clean, leakage-free, model-ready dataset.
+> **Core Responsibility:** Deliver a clean, leakage-free, model-ready dataset by strictly applying transformations _after_ splitting the data.
 
 ### Tasks
 
-| #   | Task                                                                                                                                               | Output                                                      |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| A1  | Load Melbourne Housing CSV, perform initial EDA (shape, dtypes, distributions)                                                                     | EDA summary printed in notebook                             |
-| A2  | Implement `DataPipeline.fit_transform()`: handle missing values in `BuildingArea` (~47%) and `YearBuilt` (~40%) using a chosen imputation strategy | Fitted pipeline object with stored `self.imputation_values` |
-| A3  | Implement one-hot encoding for categorical columns (e.g., `Type`, `Regionname`). Store the resulting column list in `self.encoded_columns`         | Consistent column set across train/test                     |
-| A4  | Implement feature scaling (standardization). Store `self.scalers` (mean, std per column)                                                           | Scaled `X_train`, `X_test` as NumPy arrays                  |
-| A5  | Implement `DataPipeline.transform()` for the test set using **only** the fitted state                                                              | Transformed `X_test` with zero data leakage                 |
-| A6  | Split data using `train_test_split()` (80/20, fixed `random_state`)                                                                                | `X_train, X_test, y_train, y_test` + `metadata` dict        |
+| #   | Task                                                                                                                                       | Corresponding Function                                     | Output                                               |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------- | ---------------------------------------------------- |
+| A1  | Load the Melbourne Housing CSV and run an initial Exploratory Data Analysis (shape, dtypes, missing ratios, outliers detection).           | `load_data()`, `perform_eda()` (or Notebook cells)         | EDA summary printed in the notebook                  |
+| A2  | Split the raw data into training and testing sets (70/30, fixed random state) **before** any preprocessing to guarantee zero data leakage. | `train_test_split()`                                       | `X_train_raw`, `X_test_raw`, `y_train`, `y_test`     |
+| A3  | Implement missing value imputation (e.g., k-NN imputer for `BuildingArea`) and store the learned patterns.                                 | `DataPipeline._impute_missing()`                           | Imputation values saved in pipeline state            |
+| A4  | Implement categorical encoding (One-Hot) and feature engineering (e.g., non-linear log transforms or creating Age = 2026 - YearBuilt).     | `DataPipeline._encode_categoricals()`                      | Consistent `self.encoded_columns` list               |
+| A5  | Implement feature scaling (Standardization) and store the mean/std parameters.                                                             | `DataPipeline._scale_features()`                           | Scaler parameters saved in `self.scalers`            |
+| A6  | Execute the full preprocessing pipeline: apply `fit_transform` strictly on the Train set, and apply `transform` on the Test set.           | `DataPipeline.fit_transform()`, `DataPipeline.transform()` | Cleaned `X_train`, `X_test` + metadata dict handover |
 
 ### Deliverables (Handover to Member B)
 
 ```python
 # The "Contract" from A → B
-X_train: np.ndarray    # shape (n_train, p), scaled, no NaNs
-X_test:  np.ndarray    # shape (n_test, p), scaled, no NaNs
+X_train: np.ndarray    # shape (n_train, p), scaled, encoded, no NaNs
+X_test:  np.ndarray    # shape (n_test, p), scaled, encoded, no NaNs
 y_train: np.ndarray    # shape (n_train,)
 y_test:  np.ndarray    # shape (n_test,)
 metadata: dict         # {
                        #   'feature_names': [...],
                        #   'target_name': 'Price',
                        #   'pipeline': fitted DataPipeline instance,
-                       #   'imputation_strategy': 'median',
+                       #   'imputation_strategy': 'knn_imputer',
                        #   'scaling_method': 'standardize'
                        # }
 ```
