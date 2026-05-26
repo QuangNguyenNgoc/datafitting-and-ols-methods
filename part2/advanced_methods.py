@@ -6,10 +6,10 @@ Phương pháp nâng cao: Kernel Regression, Bayesian Regression (nếu có).
 
 import numpy as np
 
-
 # ============================================================
 # Kernel Regression
 # ============================================================
+
 
 class KernelRegression:
     """Kernel Regression sử dụng Nadaraya-Watson estimator."""
@@ -37,9 +37,18 @@ class KernelRegression:
         raise NotImplementedError
 
 
+# HÀM BỌC (WRAPPER) ĐỂ ĐỒNG BỘ VỚI PIPELINE CỦA MEMBER B
+def kernel_ridge_fit(X_train, y_train, X_test, lambda_kernel) -> np.ndarray:
+    """Hàm trung gian đóng vai trò giao tiếp API với module của Member B"""
+    model = KernelRegression(lam=lambda_kernel)
+    model.fit(X_train, y_train)
+    return model.predict(X_test)
+
+
 # ============================================================
 # Bayesian Linear Regression
 # ============================================================
+
 
 class BayesianLinearRegression:
     """Bayesian Linear Regression với prior Gaussian."""
