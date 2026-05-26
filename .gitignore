@@ -13,6 +13,7 @@ build/
 venv/
 env/
 .venv/
+.conda/
 
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/

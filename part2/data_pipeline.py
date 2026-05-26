@@ -1,53 +1,71 @@
+"""
+Data Pipeline
+==============
+Tiền xử lý dữ liệu cho Part 2 (OOP Design).
+"""
+
 import numpy as np
 import pandas as pd
 
 
-# Đọc file CSV thành DataFrame.
 def load_data(filepath: str) -> pd.DataFrame:
+    """Đọc file CSV thành DataFrame."""
     return pd.read_csv(filepath)
 
 
-# Chia features và target thành tập train/test cố định.
 def train_test_split(
-    X,
-    y,
-    test_size: float = 0.2,
+    df: pd.DataFrame,
+    test_size: float = 0.3,
     random_state: int = None,
 ) -> tuple:
+    """Chia DataFrame thô thành train/test split cố định."""
     if not 0 < test_size < 1:
         raise ValueError("test_size must be between 0 and 1")
 
-    if len(X) != len(y):
-        raise ValueError("X and y must have the same number of rows")
-
     rng = np.random.default_rng(random_state)
-    indices = rng.permutation(len(y))
-    n_test = int(np.ceil(len(y) * test_size))
+    indices = rng.permutation(len(df))
+    n_test = int(np.ceil(len(df) * test_size))
     test_idx = indices[:n_test]
     train_idx = indices[n_test:]
 
-    if isinstance(X, (pd.DataFrame, pd.Series)):
-        X_train = X.iloc[train_idx].reset_index(drop=True)
-        X_test = X.iloc[test_idx].reset_index(drop=True)
-    else:
-        X_arr = np.asarray(X)
-        X_train = X_arr[train_idx]
-        X_test = X_arr[test_idx]
-
-    y_arr = np.asarray(y)
-    return X_train, X_test, y_arr[train_idx], y_arr[test_idx]
+    df_train = df.iloc[train_idx].reset_index(drop=True)
+    df_test = df.iloc[test_idx].reset_index(drop=True)
+    return df_train, df_test
 
 
 class DataPipeline:
-    # Khởi tạo trạng thái đã fit và cấu hình tiền xử lý.
-    def __init__(self):
+    def __init__(
+        self,
+        drop_columns: list = None,
+        target_name: str = "Price",
+        categorical_columns: list = None,
+        n_neighbors: int = 5,
+    ):
+        """Khởi tạo cấu hình pipeline và trạng thái học từ train data."""
+        default_drop_columns = [
+            "Address",
+            "SellerG",
+            "Suburb",
+            "Date",
+            "Postcode",
+            "Method",
+            "CouncilArea",
+        ]
+        extra_drop_columns = drop_columns or []
+
+        self.target_name = target_name
+        self.drop_columns = list(dict.fromkeys(default_drop_columns + extra_drop_columns))
+        self.categorical_columns = categorical_columns or ["Type", "Regionname"]
+        self.n_neighbors = n_neighbors
+
         self.scalers = {}
         self.imputation_values = {}
         self.encoded_columns = []
         self.feature_names = []
-        self.categorical_columns = ["Type", "Method", "Regionname", "CouncilArea"]
-        self.group_impute_columns = ["BuildingArea", "YearBuilt", "Car"]
-        self.drop_columns = ["Address", "SellerG", "Suburb", "Date", "Postcode"]
+        self.knn_imputer = None
+        self.knn_columns = []
+        self.numeric_fallbacks = {}
+
         self.required_columns = [
             "Rooms",
             "Distance",
@@ -61,182 +79,163 @@ class DataPipeline:
             "Longtitude",
             "Propertycount",
             "Type",
-            "Method",
             "Regionname",
-            "CouncilArea",
-            "Date",
         ]
-        self.sale_year = None
 
-    # Fit trạng thái tiền xử lý trên train data và trả về ma trận đã biến đổi.
-    def fit_transform(self, df: pd.DataFrame) -> np.ndarray:
-        features = self._prepare_features(df, fit=True)
-        encoded = pd.get_dummies(features, columns=self.categorical_columns, dtype=float)
-        self.encoded_columns = encoded.columns.tolist()
-        encoded = self._fill_remaining_numeric(encoded, fit=True)
-        self._fit_scalers(encoded)
-        self.feature_names = encoded.columns.tolist()
-        return self._scale(encoded).to_numpy(dtype=float)
+    def _prepare_xy(self, df: pd.DataFrame) -> tuple:
+        """Tách X và y từ DataFrame thô."""
+        if self.target_name not in df.columns:
+            raise ValueError(f"Missing target column: {self.target_name}")
 
-    # Biến đổi dữ liệu mới bằng trạng thái tiền xử lý đã fit.
-    def transform(self, df: pd.DataFrame) -> np.ndarray:
-        if not self.encoded_columns or not self.scalers:
-            raise ValueError("Pipeline is not fitted")
+        X_df = df.drop(columns=[self.target_name]).copy()
+        y_arr = df[self.target_name].to_numpy()
+        return X_df, y_arr
 
-        features = self._prepare_features(df, fit=False)
-        encoded = pd.get_dummies(features, columns=self.categorical_columns, dtype=float)
-        encoded = encoded.reindex(columns=self.encoded_columns, fill_value=0.0)
-        encoded = self._fill_remaining_numeric(encoded, fit=False)
-        return self._scale(encoded).to_numpy(dtype=float)
-
-    # Thực hiện sửa dữ liệu, imputation, tạo feature và drop cột.
-    def _prepare_features(self, df: pd.DataFrame, fit: bool) -> pd.DataFrame:
-        data = df.copy()
-
-        if "Price" in data.columns:
-            data = data.drop(columns=["Price"])
-
-        self._validate_schema(data)
-        self._repair_invalid_values(data)
-        self._prepare_categoricals(data)
-
-        if fit:
-            self._fit_imputation(data)
-
-        self._apply_imputation(data)
-        self._add_engineered_features(data, fit)
-
-        existing_drop_columns = [col for col in self.drop_columns if col in data.columns]
-        data = data.drop(columns=existing_drop_columns)
-
-        return data.replace([np.inf, -np.inf], np.nan)
-
-    # Kiểm tra các cột đầu vào bắt buộc trước khi tiền xử lý.
-    def _validate_schema(self, data: pd.DataFrame) -> None:
-        missing = [column for column in self.required_columns if column not in data.columns]
+    def _validate_schema(self, X_df: pd.DataFrame) -> None:
+        """Kiểm tra các cột đầu vào bắt buộc."""
+        missing = [
+            column
+            for column in self.required_columns
+            if column not in X_df.columns and column not in self.drop_columns
+        ]
         if missing:
             raise ValueError(f"Missing required columns: {missing}")
 
-    # Chuyển giá trị gốc không hợp lệ thành missing value và missing flag.
-    def _repair_invalid_values(self, data: pd.DataFrame) -> None:
-        if "BuildingArea" in data.columns:
-            missing = data["BuildingArea"].isna() | (data["BuildingArea"] <= 0)
-            data["BuildingArea_missing"] = missing.astype(float)
-            data.loc[data["BuildingArea"] <= 0, "BuildingArea"] = np.nan
+    def _repair_invalid_values(self, X_df: pd.DataFrame) -> None:
+        """Chuyển giá trị không hợp lệ thành missing value."""
+        if "BuildingArea" in X_df.columns:
+            missing = X_df["BuildingArea"].isna() | (X_df["BuildingArea"] <= 0)
+            X_df["BuildingArea_missing"] = missing.astype(float)
+            X_df.loc[X_df["BuildingArea"] <= 0, "BuildingArea"] = np.nan
 
-        if "YearBuilt" in data.columns:
-            missing = data["YearBuilt"].isna() | (data["YearBuilt"] < 1800)
-            data["YearBuilt_missing"] = missing.astype(float)
-            data.loc[data["YearBuilt"] < 1800, "YearBuilt"] = np.nan
+        if "YearBuilt" in X_df.columns:
+            missing = X_df["YearBuilt"].isna() | (X_df["YearBuilt"] < 1800)
+            X_df["YearBuilt_missing"] = missing.astype(float)
+            X_df.loc[X_df["YearBuilt"] < 1800, "YearBuilt"] = np.nan
 
-        if "Landsize" in data.columns:
-            missing = data["Landsize"].isna() | (data["Landsize"] <= 0)
-            data["Landsize_zero_or_missing"] = missing.astype(float)
-            data.loc[data["Landsize"] <= 0, "Landsize"] = np.nan
+        if "Landsize" in X_df.columns:
+            missing = X_df["Landsize"].isna() | (X_df["Landsize"] <= 0)
+            X_df["Landsize_zero_or_missing"] = missing.astype(float)
+            X_df.loc[X_df["Landsize"] <= 0, "Landsize"] = np.nan
 
-    # Điền missing cho categorical và chuẩn hóa về chuỗi.
-    def _prepare_categoricals(self, data: pd.DataFrame) -> None:
-        for column in self.categorical_columns:
-            if column not in data.columns:
-                data[column] = "Unknown"
-            data[column] = data[column].fillna("Unknown").astype(str)
+    def _impute_missing(self, X_df: pd.DataFrame, is_train: bool) -> pd.DataFrame:
+        """Fit hoặc áp dụng KNN Imputer trên các cột numeric."""
+        try:
+            from sklearn.impute import KNNImputer
+        except ImportError as exc:
+            raise ImportError("scikit-learn is required for KNNImputer") from exc
 
-    # Lưu median theo nhóm chỉ tính trên train data để impute numeric.
-    def _fit_imputation(self, data: pd.DataFrame) -> None:
-        self.imputation_values = {}
+        result = X_df.copy()
+        numeric_columns = result.select_dtypes(include=np.number).columns.tolist()
 
-        for column in self.group_impute_columns:
-            if column not in data.columns:
-                continue
-
-            global_median = data[column].median()
-            if pd.isna(global_median):
-                global_median = 0.0
-
-            by_type = data.groupby("Type")[column].median().dropna().to_dict()
-            self.imputation_values[column] = {
-                "global": float(global_median),
-                "by_type": {str(key): float(value) for key, value in by_type.items()},
+        if is_train:
+            self.knn_columns = numeric_columns
+            self.knn_imputer = KNNImputer(n_neighbors=self.n_neighbors)
+            imputed = self.knn_imputer.fit_transform(result[self.knn_columns])
+            self.imputation_values = {
+                "method": "knn_imputer",
+                "n_neighbors": self.n_neighbors,
+                "columns": self.knn_columns,
             }
-
-    # Áp dụng giá trị imputation đã lưu mà không fit lại.
-    def _apply_imputation(self, data: pd.DataFrame) -> None:
-        for column in self.group_impute_columns:
-            values = self.imputation_values.get(column)
-            if column not in data.columns or not isinstance(values, dict):
-                continue
-
-            fill_values = data["Type"].map(values["by_type"]).fillna(values["global"])
-            data[column] = data[column].fillna(fill_values)
-
-    # Tạo các feature nhà ở đơn giản từ cột gốc đã làm sạch.
-    def _add_engineered_features(self, data: pd.DataFrame, fit: bool) -> None:
-        years = self._sale_years(data, fit)
-
-        if "YearBuilt" in data.columns:
-            data["PropertyAge"] = (years - data["YearBuilt"]).clip(lower=0)
-
-        rooms = data["Rooms"].replace(0, np.nan) if "Rooms" in data.columns else np.nan
-
-        if {"Rooms", "Bathroom"}.issubset(data.columns):
-            data["OtherRooms"] = (data["Rooms"] - data["Bathroom"]).clip(lower=0)
-
-        if "BuildingArea" in data.columns:
-            data["BuildingArea_per_Room"] = data["BuildingArea"] / rooms
-
-        if {"BuildingArea", "Landsize"}.issubset(data.columns):
-            data["BuildingCoverage"] = data["BuildingArea"] / data["Landsize"]
-            data["BuildingCoverage"] = data["BuildingCoverage"].replace([np.inf, -np.inf], np.nan)
-            data.loc[data["BuildingCoverage"] < 0, "BuildingCoverage"] = np.nan
-
-    # Parse năm bán và lưu năm fallback từ train data.
-    def _sale_years(self, data: pd.DataFrame, fit: bool) -> pd.Series:
-        if "Date" in data.columns:
-            years = pd.to_datetime(data["Date"], dayfirst=True, errors="coerce").dt.year
         else:
-            years = pd.Series(np.nan, index=data.index)
+            missing_columns = [column for column in self.knn_columns if column not in result.columns]
+            if missing_columns:
+                raise ValueError(f"Missing KNN imputation columns: {missing_columns}")
+            imputed = self.knn_imputer.transform(result[self.knn_columns])
 
-        if fit:
-            median_year = years.median()
-            self.sale_year = int(median_year) if not pd.isna(median_year) else 2017
+        result[self.knn_columns] = imputed
+        return result
 
-        return years.fillna(self.sale_year)
+    def _engineer_and_encode(self, X_df: pd.DataFrame, is_train: bool) -> pd.DataFrame:
+        """Tạo feature mới và one-hot encode categorical columns."""
+        result = X_df.copy()
 
-    # Điền missing numeric còn lại bằng median đã fit.
-    def _fill_remaining_numeric(self, data: pd.DataFrame, fit: bool) -> pd.DataFrame:
-        non_numeric_columns = data.select_dtypes(exclude=np.number).columns.tolist()
+        if "YearBuilt" in result.columns:
+            result["Age"] = (2026 - result["YearBuilt"]).clip(lower=0)
+
+        rooms = result["Rooms"].replace(0, np.nan) if "Rooms" in result.columns else np.nan
+
+        if {"Rooms", "Bathroom"}.issubset(result.columns):
+            result["OtherRooms"] = (result["Rooms"] - result["Bathroom"]).clip(lower=0)
+
+        if "BuildingArea" in result.columns:
+            result["BuildingArea_per_Room"] = result["BuildingArea"] / rooms
+
+        if {"BuildingArea", "Landsize"}.issubset(result.columns):
+            result["BuildingCoverage"] = result["BuildingArea"] / result["Landsize"]
+            result["BuildingCoverage"] = result["BuildingCoverage"].replace([np.inf, -np.inf], np.nan)
+            result.loc[result["BuildingCoverage"] < 0, "BuildingCoverage"] = np.nan
+
+        for column in self.categorical_columns:
+            if column in result.columns:
+                result[column] = result[column].fillna("Unknown").astype(str)
+
+        existing_drop_columns = [column for column in self.drop_columns if column in result.columns]
+        result = result.drop(columns=existing_drop_columns)
+
+        active_categorical_columns = [
+            column for column in self.categorical_columns if column in result.columns
+        ]
+        result = pd.get_dummies(result, columns=active_categorical_columns, dtype=float)
+
+        if is_train:
+            self.encoded_columns = result.columns.tolist()
+        else:
+            result = result.reindex(columns=self.encoded_columns, fill_value=0.0)
+
+        return result.replace([np.inf, -np.inf], np.nan)
+
+    def _scale_features(self, X_df: pd.DataFrame, is_train: bool) -> pd.DataFrame:
+        """Chuẩn hóa Z-score bằng trạng thái học từ train data."""
+        non_numeric_columns = X_df.select_dtypes(exclude=np.number).columns.tolist()
         if non_numeric_columns:
             raise ValueError(f"Unexpected non-numeric columns before scaling: {non_numeric_columns}")
 
-        numeric_data = data.copy()
+        result = X_df.copy()
 
-        if fit:
-            values = numeric_data.median().fillna(0.0).to_dict()
-            self.imputation_values["numeric_fallbacks"] = {
-                column: float(value) for column, value in values.items()
-            }
+        if is_train:
+            self.numeric_fallbacks = result.median().fillna(0.0).to_dict()
 
-        fallbacks = self.imputation_values.get("numeric_fallbacks", {})
-        return numeric_data.fillna(fallbacks).fillna(0.0)
+        result = result.fillna(self.numeric_fallbacks).fillna(0.0)
 
-    # Lưu mean và standard deviation của từng feature chỉ từ train data.
-    def _fit_scalers(self, data: pd.DataFrame) -> None:
-        self.scalers = {}
+        if is_train:
+            self.scalers = {}
+            for column in result.columns:
+                mean = result[column].mean()
+                std = result[column].std(ddof=0)
 
-        for column in data.columns:
-            mean = data[column].mean()
-            std = data[column].std(ddof=0)
+                if pd.isna(std) or std == 0:
+                    std = 1.0
 
-            if pd.isna(std) or std == 0:
-                std = 1.0
-
-            self.scalers[column] = {"mean": float(mean), "std": float(std)}
-
-    # Standardize feature bằng scaler đã fit.
-    def _scale(self, data: pd.DataFrame) -> pd.DataFrame:
-        scaled = data.copy()
+                self.scalers[column] = {"mean": float(mean), "std": float(std)}
 
         for column, params in self.scalers.items():
-            scaled[column] = (scaled[column] - params["mean"]) / params["std"]
+            result[column] = (result[column] - params["mean"]) / params["std"]
 
-        return scaled
+        return result
+
+    def fit_transform(self, df: pd.DataFrame) -> tuple:
+        """Chỉ chạy trên tập train thô."""
+        X_df, y_train = self._prepare_xy(df)
+        self._validate_schema(X_df)
+        self._repair_invalid_values(X_df)
+        X_df = self._impute_missing(X_df, is_train=True)
+        X_df = self._engineer_and_encode(X_df, is_train=True)
+        X_df = self._scale_features(X_df, is_train=True)
+
+        self.feature_names = X_df.columns.tolist()
+        return X_df.to_numpy(dtype=float), y_train
+
+    def transform(self, df: pd.DataFrame) -> tuple:
+        """Chỉ chạy trên tập test thô bằng trạng thái đã fit."""
+        if self.knn_imputer is None or not self.encoded_columns or not self.scalers:
+            raise ValueError("Pipeline is not fitted")
+
+        X_df, y_test = self._prepare_xy(df)
+        self._validate_schema(X_df)
+        self._repair_invalid_values(X_df)
+        X_df = self._impute_missing(X_df, is_train=False)
+        X_df = self._engineer_and_encode(X_df, is_train=False)
+        X_df = self._scale_features(X_df, is_train=False)
+
+        return X_df.to_numpy(dtype=float), y_test
