@@ -9,6 +9,50 @@ import pandas as pd
 from typing import Callable, Dict, Any
 
 
+def run_diagnostics(
+    X_train_raw: np.ndarray,
+    y_train: np.ndarray,
+    feature_names: list,
+    custom_ols_func: Callable,
+    custom_vif_func: Callable,
+    custom_inference_func: Callable,
+) -> pd.DataFrame:
+    """
+    Thực thi Phase 1 (Chẩn đoán Đa cộng tuyến và Ý nghĩa Thống kê).
+    Hàm này gom tất cả các hàm của Phần 1 lại, xuất ra một bảng DataFrame duy nhất
+    để Data Analyst đọc và ra quyết định loại biến (Sync Point 2).
+    """
+
+    # 1. Chạy OLS để lấy hệ số (beta_hat) và phương sai nhiễu (sigma2)
+    # Lưu ý: Cấu trúc output của hàm custom_ols_func phụ thuộc vào cách nhóm code ở Phần 1
+    beta_hat, sigma2 = custom_ols_func(X_train_raw, y_train)
+
+    # 2. Tính hệ số phóng đại phương sai (VIF)
+    vif_values = custom_vif_func(X_train_raw)
+
+    # 3. Chạy kiểm định thống kê để lấy Sai số chuẩn, t-stat, p-value và Khoảng tin cậy
+    se, t_stats, p_values, ci_lower, ci_upper = custom_inference_func(
+        X_train_raw, y_train, beta_hat, sigma2
+    )
+
+    # 4. Gom toàn bộ "kết quả xét nghiệm máu" vào một bảng duy nhất cho Bác sĩ (DA) dễ đọc
+    diagnostics_df = pd.DataFrame(
+        {
+            "Feature": feature_names,
+            "Coefficient": beta_hat,
+            "Std_Error": se,
+            "t_statistic": t_stats,
+            "p_value": p_values,
+            "CI_95_Lower": ci_lower,
+            "CI_95_Upper": ci_upper,
+            "VIF": vif_values,
+        }
+    )
+
+    print("--- HOÀN TẤT CHẨN ĐOÁN. CHỜ DATA ANALYST REVIEW ---")
+    return diagnostics_df
+
+
 def train_models(
     X_train_raw: np.ndarray,
     X_train_best: np.ndarray,
