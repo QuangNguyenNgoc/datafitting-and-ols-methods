@@ -6,7 +6,7 @@ tính VIF và minh họa định lý Gauss-Markov.
 """
 
 import numpy as np
-import scipy.stats
+import scipy.stats as stats
 import pandas as pd
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 import statsmodels.api as sm
@@ -87,22 +87,46 @@ def model_metrics(y: np.ndarray, y_hat: np.ndarray, p: int) -> dict:
     }
 
 
-def coef_inference(X, y, beta_hat, sigma2):
+def coef_inference(
+    X: np.ndarray, y: np.ndarray, beta_hat: np.ndarray, sigma2: float
+) -> pd.DataFrame:
     """
-    4. Suy diễn thống kê cho các hệ số:
-       - Standard errors (sai số chuẩn của từng hệ số)
-       - t-statistics (giá trị t)
-       - p-values
-       - Khoảng tin cậy (Confidence Intervals) 95%
+    Suy diễn thống kê cho các hệ số:
+    - Standard errors (sai số chuẩn của từng hệ số)
+    - t-statistics (giá trị t)
+    - p-values
+    - Khoảng tin cậy (Confidence Intervals) 95%
     """
-    model = sm.OLS(y, X).fit()
+    y = np.asarray(y).flatten()
+    beta_hat = np.asarray(beta_hat).flatten()
+
+    n = X.shape[0]  # dòng
+    k = X.shape[1]  # cột
+    df = n - k  # Bậc tự do
+
+    # tính đường chéo chính của ma trận hiệp phương sai để tìm SE
+    variance_beta = sigma2 * np.diagonal(np.linalg.inv(X.T @ X))
+    se = np.sqrt(variance_beta)
+
+    # t-statistic = beta_hat / SE
+    t_stats = beta_hat / se
+
+    # Tính p-value từ phân phối Student
+    p_values = 2 * stats.t.sf(np.abs(t_stats), df)
+
+    # Tính khoảng tin cậy 95%
+    t_critical = stats.t.ppf(0.975, df)
+    ci_lower = beta_hat - t_critical * se
+    ci_upper = beta_hat + t_critical * se
 
     inference_df = pd.DataFrame(
         {
-            "Coefficient": model.params,
-            "Std_Error": model.bse,
-            "t_stat": model.tvalues,
-            "p_value": model.pvalues,
+            "Coefficient": beta_hat,
+            "Std_Error": se,
+            "t_stat": t_stats,
+            "p_value": p_values,
+            "CI_95_Lower": ci_lower,
+            "CI_95_Upper": ci_upper,
         }
     )
 
