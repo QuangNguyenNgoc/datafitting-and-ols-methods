@@ -20,32 +20,32 @@ graph LR
 ## Persona 1: Data Engineer (Member A)
 
 > **Ownership:** `data_pipeline.py`, `part2/data/`
-> **Core Responsibility:** Deliver a clean, leakage-free, model-ready dataset.
+> **Core Responsibility:** Deliver a clean, leakage-free, model-ready dataset by strictly applying transformations _after_ splitting the data.
 
 ### Tasks
 
-| #   | Task                                                                                                                                               | Output                                                      |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| A1  | Load Melbourne Housing CSV, perform initial EDA (shape, dtypes, distributions)                                                                     | EDA summary printed in notebook                             |
-| A2  | Implement `DataPipeline.fit_transform()`: handle missing values in `BuildingArea` (~47%) and `YearBuilt` (~40%) using a chosen imputation strategy | Fitted pipeline object with stored `self.imputation_values` |
-| A3  | Implement one-hot encoding for categorical columns (e.g., `Type`, `Regionname`). Store the resulting column list in `self.encoded_columns`         | Consistent column set across train/test                     |
-| A4  | Implement feature scaling (standardization). Store `self.scalers` (mean, std per column)                                                           | Scaled `X_train`, `X_test` as NumPy arrays                  |
-| A5  | Implement `DataPipeline.transform()` for the test set using **only** the fitted state                                                              | Transformed `X_test` with zero data leakage                 |
-| A6  | Split data using `train_test_split()` (80/20, fixed `random_state`)                                                                                | `X_train, X_test, y_train, y_test` + `metadata` dict        |
+| #   | Task                                                                                                                                       | Corresponding Function                                     | Output                                               |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------- | ---------------------------------------------------- |
+| A1  | Load the Melbourne Housing CSV and run an initial Exploratory Data Analysis (shape, dtypes, missing ratios, outliers detection).           | `load_data()`, `perform_eda()` (or Notebook cells)         | EDA summary printed in the notebook                  |
+| A2  | Split the raw data into training and testing sets (70/30, fixed random state) **before** any preprocessing to guarantee zero data leakage. | `train_test_split()`                                       | `X_train_raw`, `X_test_raw`, `y_train`, `y_test`     |
+| A3  | Implement missing value imputation (e.g., k-NN imputer for `BuildingArea`) and store the learned patterns.                                 | `DataPipeline._impute_missing()`                           | Imputation values saved in pipeline state            |
+| A4  | Implement categorical encoding (One-Hot) and feature engineering (e.g., non-linear log transforms or creating Age = 2026 - YearBuilt).     | `DataPipeline._encode_categoricals()`                      | Consistent `self.encoded_columns` list               |
+| A5  | Implement feature scaling (Standardization) and store the mean/std parameters.                                                             | `DataPipeline._scale_features()`                           | Scaler parameters saved in `self.scalers`            |
+| A6  | Execute the full preprocessing pipeline: apply `fit_transform` strictly on the Train set, and apply `transform` on the Test set.           | `DataPipeline.fit_transform()`, `DataPipeline.transform()` | Cleaned `X_train`, `X_test` + metadata dict handover |
 
 ### Deliverables (Handover to Member B)
 
 ```python
 # The "Contract" from A → B
-X_train: np.ndarray    # shape (n_train, p), scaled, no NaNs
-X_test:  np.ndarray    # shape (n_test, p), scaled, no NaNs
+X_train: np.ndarray    # shape (n_train, p), scaled, encoded, no NaNs
+X_test:  np.ndarray    # shape (n_test, p), scaled, encoded, no NaNs
 y_train: np.ndarray    # shape (n_train,)
 y_test:  np.ndarray    # shape (n_test,)
 metadata: dict         # {
                        #   'feature_names': [...],
                        #   'target_name': 'Price',
                        #   'pipeline': fitted DataPipeline instance,
-                       #   'imputation_strategy': 'median',
+                       #   'imputation_strategy': 'knn_imputer',
                        #   'scaling_method': 'standardize'
                        # }
 ```
@@ -55,18 +55,20 @@ metadata: dict         # {
 ## Persona 2: ML Modeler (Member B)
 
 > **Ownership:** `model_comparison.py`, `cross_validation.py` (from Part 1)
+
 > **Core Responsibility:** Train all regression models using self-written functions from Part 1, tune hyperparameters, and output a ranked performance comparison.
 
 ### Tasks
 
-| #   | Task                                                                                                      | Output                                      |
-| --- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| B1  | Execute `ols_fit(X_train, y_train)` on the full design matrix as the baseline OLS model                   | `beta_hat_ols`, `y_pred_ols`                |
-| B2  | Execute `ols_fit(X_train_best, y_train)` on the selected-feature matrix as the feature-selected OLS model | `beta_hat_best`, `y_pred_best`              |
-| B3  | Run `kfold_cv` on $X_{train\_best}$ to find the optimal Ridge hyperparameter $\lambda$                    | `best_lambda`, CV score curve               |
-| B4  | Execute `ridge_fit(X_train_best, y_train, lambda_best)` to obtain the optimized Ridge coefficients        | `beta_hat_ridge`, `y_pred_ridge`            |
-| B5  | Execute the advanced `kernel_ridge_fit` model from `advanced_methods.py` on the dataset                   | `y_pred_kernel_ridge`, kernel model outputs |
-| B6  | Compute MAE, RMSE, and $R^2$ on the test set for all 4 models and export a ranked comparison DataFrame    | Ranked comparison DataFrame                 |
+| #   | Task                                                                                                                                               | Corresponding Function                                                      | Output                                                         |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| B1  | Run initial statistical diagnostics on the raw training data to detect multicollinearity and evaluate feature significance for the selection gate. | `run_diagnostics()` (invokes Part 1 `ols_fit`, `vif`, `coef_inference`)     | Initial VIF table, t-statistics, and p-values for Phase 1 loop |
+| B2  | Train the baseline OLS model on the full raw feature set inside the main training pipeline execution.                                              | `train_models()` (invokes Part 1 `ols_fit`)                                 | Baseline `beta_hat_ols` and raw test predictions               |
+| B3  | Train the feature-selected OLS model on the optimized feature set ($X_{train\_best}$) after removing collinear variables.                          | `train_models()` (invokes Part 1 `ols_fit`)                                 | Selected `beta_hat_best` and optimized test predictions        |
+| B4  | Tune the Ridge regression hyperparameter $\lambda$ using K-Fold Cross-Validation on the best feature matrix.                                       | `hyperparameter_tuning()` (invokes Part 1 `kfold_cv`)                       | `best_lambda` and CV error curve data points                   |
+| B5  | Train the optimized Ridge Regression model on the best feature matrix using the tuned $\lambda$ parameter.                                         | `train_models()` (invokes Part 1 `ridge_fit`)                               | Optimized `beta_hat_ridge` and test predictions                |
+| B6  | Train the advanced non-linear Kernel Ridge Regression model as the competitive non-linear baseline.                                                | `train_models()` (invokes `kernel_ridge_fit` from `advanced_methods.py`)    | `y_pred_kernel_ridge` and non-linear kernel artifacts          |
+| B7  | Compute test performance metrics (MAE, RMSE, $R^2$) for all models and generate the final evaluation ranking.                                      | `train_models()` (utilizes nested `compute_metrics`) & `comparison_table()` | Ranked performance comparison DataFrame for Member C           |
 
 ### Deliverables (Handover to Member C)
 
@@ -109,19 +111,20 @@ comparison_df: pd.DataFrame # The formatted comparison table
 ## Persona 3: Analyst & Reporter (Member C)
 
 > **Ownership:** `part2_notebook.ipynb`, `advanced_methods.py`, report sections
-> **Core Responsibility:** Visualize, interpret, and write the narrative that ties the math to the real-world meaning.
+> **Core Responsibility:** Make data-driven feature selection decisions, visualize results, and write the narrative that ties the math to the real-world meaning.
 
 ### Tasks
 
-| #   | Task                                                                                                                                        | Output                      |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
-| C1  | Plot the 4 residual diagnostic plots for the best model (Residuals vs Fitted, Q-Q, Scale-Location, Residuals vs Leverage)                   | 4-panel figure              |
-| C2  | Plot standardized regression coefficients as a horizontal bar chart for feature importance                                                  | Feature importance figure   |
-| C3  | Plot the Ridge Trace ($\lambda$ vs coefficients) and the CV error curve                                                                     | 2 figures                   |
-| C4  | Interpret the comparison table: why did Ridge outperform OLS? What does $\lambda$ do to multicollinear features like `Rooms` vs `Bedroom2`? | Written analysis paragraphs |
-| C5  | Interpret the Gauss-Markov test results: does heteroscedasticity exist? Is the normality assumption violated?                               | Written discussion          |
-| C6  | Write the **Discussion & Conclusion** section: connect the math to the Melbourne housing market context                                     | Final report section        |
-| C7  | (Bonus) Implement and evaluate Kernel Ridge or Bayesian Linear Regression in `advanced_methods.py`                                          | Advanced model results      |
+| #   | Task                                                                                                                                                                                                            | Corresponding Tool/Function                               | Output                                       |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | -------------------------------------------- |
+| C1  | **[Phase 1]** Analyze the initial diagnostics (VIF, p-values) provided by Member B to detect multicollinearity. Decide which features to drop and instruct Member A to update the `drop_columns` configuration. | Jupyter Notebook (Reviewing B's `run_diagnostics` output) | Finalized `drop_columns` list (Sync Point 2) |
+| C2  | **[Phase 2]** Plot the 4 residual diagnostic plots for the best model to evaluate Gauss-Markov assumptions (Residuals vs Fitted, Q-Q, Scale-Location, Residuals vs Leverage).                                   | `residual_plots()` (from Part 1)                          | 4-panel diagnostic figure                    |
+| C3  | Plot standardized regression coefficients as a horizontal bar chart to illustrate feature importance.                                                                                                           | `plot_coefficients()`                                     | Feature importance figure                    |
+| C4  | Plot the Ridge Trace ($\lambda$ vs coefficients) and the CV error curve to demonstrate the regularization effect.                                                                                               | Matplotlib / Seaborn                                      | 2 hyperparameter figures                     |
+| C5  | Interpret the evaluation metrics and the comparison table. Explain mathematically and practically why Ridge outperformed (or underperformed) OLS.                                                               | Written Analysis (Markdown/Typst)                         | Analytical paragraphs                        |
+| C6  | Interpret the Gauss-Markov test results (e.g., Breusch-Pagan). Discuss the presence of heteroscedasticity and its impact on the model's reliability for high-priced houses.                                     | Written Analysis (Markdown/Typst)                         | Statistical discussion                       |
+| C7  | Write the **Discussion & Conclusion** section: connect the mathematical findings back to the Melbourne housing market context.                                                                                  | Written Analysis (Markdown/Typst)                         | Final report section                         |
+| C8  | **[Bonus]** Implement the core mathematical logic for Kernel Ridge or Bayesian Linear Regression. Handoff this function to Member B to execute inside the `train_models` pipeline.                              | `advanced_methods.py`                                     | Advanced model functions                     |
 
 ### Deliverables (Final Output)
 

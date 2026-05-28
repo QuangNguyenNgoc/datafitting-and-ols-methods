@@ -9,41 +9,115 @@ import pandas as pd
 from typing import Callable, Dict, Any
 
 
+def run_diagnostics(
+    X_train_raw: np.ndarray,
+    y_train: np.ndarray,
+    feature_names: list,
+    custom_ols_func: Callable,
+    custom_vif_func: Callable,
+    custom_inference_func: Callable,
+) -> pd.DataFrame:
+    """
+    Thực thi Phase 1 (Chẩn đoán Đa cộng tuyến và Ý nghĩa Thống kê).
+    Hàm này gom tất cả các hàm của Phần 1 lại, xuất ra một bảng DataFrame duy nhất
+    để Data Analyst đọc và ra quyết định loại biến (Sync Point 2).
+    """
+
+    # 1. Chạy OLS để lấy hệ số (beta_hat) và phương sai nhiễu (sigma2)
+    # Lưu ý: Cấu trúc output của hàm custom_ols_func phụ thuộc vào cách nhóm code ở Phần 1
+    beta_hat, sigma2 = custom_ols_func(X_train_raw, y_train)
+
+    # 2. Tính hệ số phóng đại phương sai (VIF)
+    vif_values = custom_vif_func(X_train_raw)
+
+    # 3. Chạy kiểm định thống kê để lấy Sai số chuẩn, t-stat, p-value và Khoảng tin cậy
+    se, t_stats, p_values, ci_lower, ci_upper = custom_inference_func(
+        X_train_raw, y_train, beta_hat, sigma2
+    )
+
+    # 4. Gom toàn bộ "kết quả xét nghiệm máu" vào một bảng duy nhất cho Bác sĩ (DA) dễ đọc
+    diagnostics_df = pd.DataFrame(
+        {
+            "Feature": feature_names,
+            "Coefficient": beta_hat,
+            "Std_Error": se,
+            "t_statistic": t_stats,
+            "p_value": p_values,
+            "CI_95_Lower": ci_lower,
+            "CI_95_Upper": ci_upper,
+            "VIF": vif_values,
+        }
+    )
+
+    print("--- HOÀN TẤT CHẨN ĐOÁN. CHỜ DATA ANALYST REVIEW ---")
+    return diagnostics_df
+
+
 def train_models(
-    X_train: np.ndarray, 
-    y_train: np.ndarray, 
-    X_test: np.ndarray, 
+    X_train_raw: np.ndarray,
+    X_train_best: np.ndarray,
+    y_train: np.ndarray,
+    X_test_raw: np.ndarray,
+    X_test_best: np.ndarray,
     y_test: np.ndarray,
     custom_ols_func: Callable,
     custom_ridge_func: Callable,
-    sklearn_models: dict = None
+    custom_kernel_func: Callable,
+    lambda_ridge: float,
+    lambda_kernel: float,
 ) -> Dict[str, Dict[str, Any]]:
-    """Trains and evaluates both custom from-scratch models and baseline sklearn models.
+    """Trains and evaluates the four required regression models using custom code.
 
     Args:
-        X_train (np.ndarray): Training feature matrix.
+        X_train_raw (np.ndarray): Full training feature matrix.
+        X_train_best (np.ndarray): Training feature matrix after removing collinear variables.
         y_train (np.ndarray): Training target vector.
-        X_test (np.ndarray): Testing feature matrix.
+        X_test_raw (np.ndarray): Full testing feature matrix.
+        X_test_best (np.ndarray): Testing feature matrix after removing collinear variables.
         y_test (np.ndarray): Testing target vector.
         custom_ols_func (Callable): The custom `ols_fit` function from Part 1.
         custom_ridge_func (Callable): The custom `ridge_fit` function from Part 1.
-        sklearn_models (dict, optional): A dictionary of instantiated scikit-learn models 
-            to use as baselines (e.g., {'sklearn_OLS': LinearRegression()}).
+        custom_kernel_func (Callable): The custom `kernel_ridge_fit` function from advanced methods.
+        lambda_ridge (float): Optimal Ridge regularization parameter found via K-fold CV.
+        lambda_kernel (float): Optimal Kernel Ridge regularization parameter.
 
     Returns:
-        Dict[str, Dict[str, Any]]: A dictionary containing evaluation results for each model.
-            Format: {model_name: {'train_score': ..., 'test_score': ..., 'predictions': ..., 'coefficients': ...}}
+        Dict[str, Dict[str, Any]]: Dictionary containing the handoff results for the Data Analyst.
 
     Raises:
-        NotImplementedError: If the method is not yet implemented.
+        NotImplementedError: If one of the custom fitting functions is not callable or not implemented.
     """
-    raise NotImplementedError
+
+    results = {}
+
+    # 1. Execute OLS on the full raw feature matrix.
+    # beta_raw = custom_ols_func(X_train_raw, y_train)
+    # y_pred_raw = X_test_raw @ beta_raw
+    # Compute MAE, RMSE, R2 on y_test
+
+    # 2. Execute OLS on the selected-feature matrix.
+    # beta_best = custom_ols_func(X_train_best, y_train)
+    # y_pred_best = X_test_best @ beta_best
+    # Compute MAE, RMSE, R2 on y_test
+
+    # 3. Execute Ridge Regression on the selected feature matrix.
+    # beta_ridge = custom_ridge_func(X_train_best, y_train, lambda_ridge)
+    # y_pred_ridge = X_test_best @ beta_ridge
+    # Compute MAE, RMSE, R2 on y_test
+
+    # 4. Execute Kernel Ridge Regression on the selected feature matrix.
+    # y_pred_kernel = custom_kernel_func(X_train_best, y_train, X_test_best, lambda_kernel)
+    # Compute MAE, RMSE, R2 on y_test
+
+    return results
 
 
-def evaluate_gauss_markov_assumptions(X: np.ndarray, y: np.ndarray, residuals: np.ndarray) -> dict:
+def evaluate_gauss_markov_assumptions(
+    X: np.ndarray, y: np.ndarray, residuals: np.ndarray
+) -> dict:
     """Evaluates Gauss-Markov assumptions on real data using statistical tests.
 
-    Performs tests such as the Breusch-Pagan test for heteroscedasticity, 
+    Performs tests such as the Breusch-Pagan test for heteroscedasticity,
     Variance Inflation Factor (VIF) checks for multicollinearity, and evaluates
     normality of residuals to ensure OLS assumptions hold on the real dataset.
 
@@ -53,7 +127,7 @@ def evaluate_gauss_markov_assumptions(X: np.ndarray, y: np.ndarray, residuals: n
         residuals (np.ndarray): The residual vector (y - y_hat) from the fitted model.
 
     Returns:
-        dict: A dictionary containing the results of various statistical tests 
+        dict: A dictionary containing the results of various statistical tests
             (e.g., {'Breusch-Pagan': p_value, 'VIF': dataframe, ...}).
 
     Raises:
@@ -77,7 +151,9 @@ def comparison_table(results: dict) -> pd.DataFrame:
     raise NotImplementedError
 
 
-def plot_predictions(y_test: np.ndarray, results: dict, title: str = "Model Predictions Comparison") -> None:
+def plot_predictions(
+    y_test: np.ndarray, results: dict, title: str = "Model Predictions Comparison"
+) -> None:
     """Plots a comparison of predictions made by different models against the true values.
 
     Args:
@@ -104,7 +180,13 @@ def plot_coefficients(results: dict, feature_names: list) -> None:
     raise NotImplementedError
 
 
-def hyperparameter_tuning(X_train: np.ndarray, y_train: np.ndarray, model_class: Callable, param_grid: dict, k: int = 5) -> tuple:
+def hyperparameter_tuning(
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    model_class: Callable,
+    param_grid: dict,
+    k: int = 5,
+) -> tuple:
     """Performs k-fold cross-validation to find the best hyperparameters.
 
     Args:
