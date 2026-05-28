@@ -37,7 +37,7 @@ def hat_matrix(X):
     return X_mat @ np.linalg.pinv(X_mat)
 
 
-def model_metrics(y, y_hat, p):
+def model_metrics(y: np.ndarray, y_hat: np.ndarray, p: int) -> dict:
     """
     Tính các độ đo tổng hợp mô hình:
     - RSS (Residual Sum of Squares)
@@ -47,17 +47,20 @@ def model_metrics(y, y_hat, p):
     - F-statistic
     """
     y_arr = np.array(y).flatten()
-    print(y_arr, type(y_arr))
     y_hat_arr = np.array(y_hat).flatten()
-    print(y_hat_arr, type(y_hat_arr))
     n = len(y_arr)
 
-    # RSS
-    rss = np.sum((y_arr - y_hat_arr) ** 2)
+    print(y_arr, type(y_arr))
+    print(y_hat_arr, type(y_hat_arr))
 
-    # TSS
-    y_mean = np.mean(y_arr)
-    tss = np.sum((y_arr - y_mean) ** 2)
+    # RSS = e^T * e
+    e = y - y_hat
+    rss = e.T @ e
+
+    # TSS = y_c^T * y_c
+    y_m = np.mean(y)
+    y_c = y - y_m
+    tss = y_c.T @ y_c
 
     # R^2
     r2 = 1 - (rss / tss) if tss != 0 else 0.0
@@ -76,11 +79,11 @@ def model_metrics(y, y_hat, p):
         f_statistic = np.nan
 
     return {
-        "RSS": rss,
-        "TSS": tss,
-        "R2": r2,
-        "Adj_R2": adj_r2,
-        "F_statistic": f_statistic,
+        "RSS": float(rss),
+        "TSS": float(tss),
+        "R2": float(r2),
+        "Adj_R2": float(adj_r2),
+        "F_statistic": float(f_statistic),
     }
 
 
