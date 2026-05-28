@@ -1,128 +1,663 @@
 """
 Model Comparison
-=================
-So sánh hiệu năng các mô hình regression trên dữ liệu thực.
+================
+Training, tuning, diagnostics, and comparison utilities for Part 2.
+
+Part 2 uses the Part 1 OLS/Ridge/VIF functions by default. The sklearn
+implementations remain as a fallback and as optional baselines, so this file can
+still run while notebooks are being wired together.
 """
 
+from __future__ import annotations
+
+from typing import Any, Callable, Dict
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from typing import Callable, Dict, Any
+from scipy import stats
+from sklearn.base import clone
+from sklearn.kernel_ridge import KernelRidge
+from sklearn.linear_model import LinearRegression, Ridge
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.model_selection import GridSearchCV, KFold
+
+try:
+    from part1.ols_implementation import coef_inference as PART1_COEF_INFERENCE
+    from part1.ols_implementation import ols_fit as PART1_OLS_FIT
+    from part1.ols_implementation import vif as PART1_VIF
+except Exception as exc:  # pragma: no cover - fallback depends on runtime path.
+    PART1_COEF_INFERENCE = None
+    PART1_OLS_FIT = None
+    PART1_VIF = None
+    PART1_OLS_IMPORT_ERROR = exc
+else:
+    PART1_OLS_IMPORT_ERROR = None
+
+try:
+    from part1.ridge_lasso import ridge_fit as PART1_RIDGE_FIT
+except Exception as exc:  # pragma: no cover - fallback depends on runtime path.
+    PART1_RIDGE_FIT = None
+    PART1_RIDGE_IMPORT_ERROR = exc
+else:
+    PART1_RIDGE_IMPORT_ERROR = None
+
+
+def _as_2d_array(X: np.ndarray) -> np.ndarray:
+    X_arr = np.asarray(X, dtype=float)
+    if X_arr.ndim == 1:
+        X_arr = X_arr.reshape(-1, 1)
+    return X_arr
+
+
+def _as_1d_array(y: np.ndarray) -> np.ndarray:
+    return np.asarray(y, dtype=float).reshape(-1)
+
+
+def _add_intercept(X: np.ndarray) -> np.ndarray:
+    X_arr = _as_2d_array(X)
+    return np.column_stack([np.ones(X_arr.shape[0]), X_arr])
+
+
+def _validate_xy(X: np.ndarray, y: np.ndarray, name: str) -> tuple[np.ndarray, np.ndarray]:
+    X_arr = _as_2d_array(X)
+    y_arr = _as_1d_array(y)
+
+    if X_arr.shape[0] != y_arr.shape[0]:
+        raise ValueError(f"{name}: X and y must have the same number of rows.")
+    if not np.isfinite(X_arr).all():
+        raise ValueError(f"{name}: X contains NaN or infinite values.")
+    if not np.isfinite(y_arr).all():
+        raise ValueError(f"{name}: y contains NaN or infinite values.")
+
+    return X_arr, y_arr
+
+
+def _coef_with_intercept(model: Any) -> np.ndarray | None:
+    if not hasattr(model, "coef_"):
+        return None
+
+    coef = np.asarray(model.coef_, dtype=float).reshape(-1)
+    intercept = float(np.asarray(getattr(model, "intercept_", 0.0)).reshape(-1)[0])
+    return np.concatenate([[intercept], coef])
+
+
+def compute_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict:
+    """
+    Compute standard regression metrics used across all models.
+    """
+    y_true = _as_1d_array(y_true)
+    y_pred = _as_1d_array(y_pred)
+
+    if y_true.shape[0] != y_pred.shape[0]:
+        raise ValueError("y_true and y_pred must have the same length.")
+
+    return {
+        "MAE": float(mean_absolute_error(y_true, y_pred)),
+        "RMSE": float(np.sqrt(mean_squared_error(y_true, y_pred))),
+        "R2": float(r2_score(y_true, y_pred)),
+    }
+
+
+def _make_result(
+    model: Any,
+    y_train: np.ndarray,
+    y_test: np.ndarray,
+    predictions_train: np.ndarray,
+    predictions_test: np.ndarray,
+    coefficients: np.ndarray | None = None,
+    best_params: dict | None = None,
+    source: str = "",
+) -> dict:
+    metrics = compute_metrics(y_test, predictions_test)
+    train_metrics = compute_metrics(y_train, predictions_train)
+
+    result = {
+        "model": model,
+        "coefficients": coefficients,
+        "feature_coefficients": None
+        if coefficients is None
+        else np.asarray(coefficients).reshape(-1)[1:],
+        "predictions_train": _as_1d_array(predictions_train),
+        "predictions_test": _as_1d_array(predictions_test),
+        "predictions": _as_1d_array(predictions_test),
+        "metrics": metrics,
+        "train_metrics": train_metrics,
+        "train_score": train_metrics["R2"],
+        "test_score": metrics["R2"],
+        "best_params": best_params or {},
+        "source": source,
+    }
+    return result
+
+
+def _fit_custom_ols(
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    X_test: np.ndarray,
+    custom_ols_func: Callable,
+) -> dict:
+    X_train_design = _add_intercept(X_train)
+    X_test_design = _add_intercept(X_test)
+    beta = np.asarray(custom_ols_func(X_train_design, y_train), dtype=float).reshape(-1)
+
+    return {
+        "model": {"type": "custom_ols", "fit_function": custom_ols_func},
+        "coefficients": beta,
+        "predictions_train": X_train_design @ beta,
+        "predictions_test": X_test_design @ beta,
+    }
+
+
+def _fit_custom_ridge(
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    X_test: np.ndarray,
+    custom_ridge_func: Callable,
+    lam: float,
+) -> dict:
+    X_train_design = _add_intercept(X_train)
+    X_test_design = _add_intercept(X_test)
+    beta = np.asarray(custom_ridge_func(X_train_design, y_train, lam), dtype=float).reshape(-1)
+
+    return {
+        "model": {
+            "type": "custom_ridge",
+            "fit_function": custom_ridge_func,
+            "lambda": float(lam),
+        },
+        "coefficients": beta,
+        "predictions_train": X_train_design @ beta,
+        "predictions_test": X_test_design @ beta,
+    }
+
+
+def _fit_sklearn_model(model: Any, X_train, y_train, X_test) -> tuple[Any, np.ndarray, np.ndarray]:
+    fitted_model = clone(model)
+    fitted_model.fit(X_train, y_train)
+    return fitted_model, fitted_model.predict(X_train), fitted_model.predict(X_test)
 
 
 def train_models(
-    X_train: np.ndarray, 
-    y_train: np.ndarray, 
-    X_test: np.ndarray, 
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    X_test: np.ndarray,
     y_test: np.ndarray,
-    custom_ols_func: Callable,
-    custom_ridge_func: Callable,
-    sklearn_models: dict = None
+    custom_ols_func: Callable | None = None,
+    custom_ridge_func: Callable | None = None,
+    sklearn_models: dict | None = None,
+    ridge_param_grid: dict | None = None,
+    kernel_params: dict | None = None,
+    k: int = 5,
+    random_state: int = 42,
+    kernel_sample_size: int = 1000,
 ) -> Dict[str, Dict[str, Any]]:
-    """Trains and evaluates both custom from-scratch models and baseline sklearn models.
+    """Train Part 1 OLS/Ridge, Kernel Ridge, and optional sklearn baselines."""
+    X_train, y_train = _validate_xy(X_train, y_train, "train")
+    X_test, y_test = _validate_xy(X_test, y_test, "test")
+    results: Dict[str, Dict[str, Any]] = {}
 
-    Args:
-        X_train (np.ndarray): Training feature matrix.
-        y_train (np.ndarray): Training target vector.
-        X_test (np.ndarray): Testing feature matrix.
-        y_test (np.ndarray): Testing target vector.
-        custom_ols_func (Callable): The custom `ols_fit` function from Part 1.
-        custom_ridge_func (Callable): The custom `ridge_fit` function from Part 1.
-        sklearn_models (dict, optional): A dictionary of instantiated scikit-learn models 
-            to use as baselines (e.g., {'sklearn_OLS': LinearRegression()}).
+    custom_ols_func = custom_ols_func or PART1_OLS_FIT
+    custom_ridge_func = custom_ridge_func or PART1_RIDGE_FIT
 
-    Returns:
-        Dict[str, Dict[str, Any]]: A dictionary containing evaluation results for each model.
-            Format: {model_name: {'train_score': ..., 'test_score': ..., 'predictions': ..., 'coefficients': ...}}
+    if custom_ols_func is not None:
+        ols = _fit_custom_ols(X_train, y_train, X_test, custom_ols_func)
+        results["OLS"] = _make_result(
+            model=ols["model"],
+            y_train=y_train,
+            y_test=y_test,
+            predictions_train=ols["predictions_train"],
+            predictions_test=ols["predictions_test"],
+            coefficients=ols["coefficients"],
+            source="part1",
+        )
+    else:
+        ols_model, y_train_pred, y_test_pred = _fit_sklearn_model(
+            LinearRegression(), X_train, y_train, X_test
+        )
+        results["OLS"] = _make_result(
+            model=ols_model,
+            y_train=y_train,
+            y_test=y_test,
+            predictions_train=y_train_pred,
+            predictions_test=y_test_pred,
+            coefficients=_coef_with_intercept(ols_model),
+            best_params={"fallback_reason": f"Part 1 OLS unavailable: {PART1_OLS_IMPORT_ERROR}"},
+            source="sklearn_fallback",
+        )
 
-    Raises:
-        NotImplementedError: If the method is not yet implemented.
+    ridge_param_grid = ridge_param_grid or {"alpha": np.logspace(-3, 5, 17)}
+    ridge_best_params, ridge_best_rmse, ridge_cv_results = hyperparameter_tuning(
+        X_train,
+        y_train,
+        Ridge,
+        ridge_param_grid,
+        k=k,
+        random_state=random_state,
+        return_cv_results=True,
+    )
+    ridge_alpha = float(ridge_best_params.get("alpha", 1.0))
+    ridge_cv_scores = cv_scores_from_results(ridge_cv_results, param_name="alpha")
+    ridge_handover_params = {
+        **ridge_best_params,
+        "lambda": ridge_alpha,
+        "cv_rmse": ridge_best_rmse,
+    }
+
+    if custom_ridge_func is not None:
+        ridge = _fit_custom_ridge(
+            X_train,
+            y_train,
+            X_test,
+            custom_ridge_func,
+            lam=ridge_alpha,
+        )
+        results["Ridge"] = _make_result(
+            model=ridge["model"],
+            y_train=y_train,
+            y_test=y_test,
+            predictions_train=ridge["predictions_train"],
+            predictions_test=ridge["predictions_test"],
+            coefficients=ridge["coefficients"],
+            best_params=ridge_handover_params,
+            source="part1",
+        )
+    else:
+        ridge_model, y_train_pred, y_test_pred = _fit_sklearn_model(
+            Ridge(alpha=ridge_alpha), X_train, y_train, X_test
+        )
+        results["Ridge"] = _make_result(
+            model=ridge_model,
+            y_train=y_train,
+            y_test=y_test,
+            predictions_train=y_train_pred,
+            predictions_test=y_test_pred,
+            coefficients=_coef_with_intercept(ridge_model),
+            best_params={
+                **ridge_handover_params,
+                "fallback_reason": f"Part 1 Ridge unavailable: {PART1_RIDGE_IMPORT_ERROR}",
+            },
+            source="sklearn_fallback",
+        )
+
+    results["Ridge"]["best_lambda"] = ridge_alpha
+    results["Ridge"]["cv_scores"] = ridge_cv_scores
+    results["Ridge"]["cv_results"] = ridge_cv_results
+
+    kernel_params = kernel_params or {"alpha": 1.0, "kernel": "rbf", "gamma": 0.1}
+    kernel_result = _train_kernel_ridge(
+        X_train,
+        y_train,
+        X_test,
+        y_test,
+        kernel_params=kernel_params,
+        random_state=random_state,
+        sample_size=kernel_sample_size,
+    )
+    results["Kernel_Ridge"] = kernel_result
+
+    for name, model in (sklearn_models or {}).items():
+        fitted, y_train_pred, y_test_pred = _fit_sklearn_model(
+            model, X_train, y_train, X_test
+        )
+        result_name = name if name not in results else f"{name}_extra"
+        results[result_name] = _make_result(
+            model=fitted,
+            y_train=y_train,
+            y_test=y_test,
+            predictions_train=y_train_pred,
+            predictions_test=y_test_pred,
+            coefficients=_coef_with_intercept(fitted),
+            source="sklearn_extra",
+        )
+
+    return results
+
+
+def _train_kernel_ridge(
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    X_test: np.ndarray,
+    y_test: np.ndarray,
+    kernel_params: dict,
+    random_state: int,
+    sample_size: int,
+) -> dict:
+    """Train Kernel Ridge on a deterministic subset to keep the skeleton fast."""
+    rng = np.random.default_rng(random_state)
+    n_train = X_train.shape[0]
+    sample_size = min(sample_size, n_train)
+
+    if sample_size < n_train:
+        train_idx = rng.choice(n_train, size=sample_size, replace=False)
+        X_fit = X_train[train_idx]
+        y_fit = y_train[train_idx]
+    else:
+        X_fit = X_train
+        y_fit = y_train
+
+    model = KernelRidge(**kernel_params)
+    model.fit(X_fit, y_fit)
+
+    y_train_pred = model.predict(X_train)
+    y_test_pred = model.predict(X_test)
+    result = _make_result(
+        model=model,
+        y_train=y_train,
+        y_test=y_test,
+        predictions_train=y_train_pred,
+        predictions_test=y_test_pred,
+        coefficients=None,
+        best_params=kernel_params,
+        source="sklearn",
+    )
+    result["training_rows_used"] = int(sample_size)
+    return result
+
+
+def _vif_table(X: np.ndarray, feature_names: list[str] | None = None) -> pd.DataFrame:
+    X = _as_2d_array(X)
+    names = feature_names or [f"x{i}" for i in range(X.shape[1])]
+
+    if PART1_VIF is not None:
+        try:
+            vif_df = PART1_VIF(X).copy()
+            if "Feature" in vif_df.columns and len(vif_df) == len(names):
+                vif_df["Feature"] = names
+            if "VIF_Score" in vif_df.columns:
+                return vif_df.sort_values("VIF_Score", ascending=False).reset_index(drop=True)
+        except Exception:
+            pass
+
+    rows = []
+
+    for idx, name in enumerate(names):
+        target = X[:, idx]
+        if np.std(target) < 1e-12:
+            vif_value = np.inf
+        else:
+            others = np.delete(X, idx, axis=1)
+            if others.shape[1] == 0:
+                vif_value = 1.0
+            else:
+                aux_model = LinearRegression()
+                aux_model.fit(others, target)
+                r2 = aux_model.score(others, target)
+                vif_value = np.inf if r2 >= 1.0 else 1.0 / max(1.0 - r2, 1e-12)
+
+        rows.append({"Feature": name, "VIF_Score": float(vif_value)})
+
+    return pd.DataFrame(rows).sort_values("VIF_Score", ascending=False).reset_index(drop=True)
+
+
+def run_diagnostics(
+    X: np.ndarray,
+    y: np.ndarray,
+    feature_names: list[str] | None = None,
+) -> dict:
     """
-    raise NotImplementedError
+    Run the Member B Phase 1 diagnostics before final model selection.
 
-
-def evaluate_gauss_markov_assumptions(X: np.ndarray, y: np.ndarray, residuals: np.ndarray) -> dict:
-    """Evaluates Gauss-Markov assumptions on real data using statistical tests.
-
-    Performs tests such as the Breusch-Pagan test for heteroscedasticity, 
-    Variance Inflation Factor (VIF) checks for multicollinearity, and evaluates
-    normality of residuals to ensure OLS assumptions hold on the real dataset.
-
-    Args:
-        X (np.ndarray): The design matrix (features).
-        y (np.ndarray): The true target vector.
-        residuals (np.ndarray): The residual vector (y - y_hat) from the fitted model.
-
-    Returns:
-        dict: A dictionary containing the results of various statistical tests 
-            (e.g., {'Breusch-Pagan': p_value, 'VIF': dataframe, ...}).
-
-    Raises:
-        NotImplementedError: If the method is not yet implemented.
+    This returns VIF for multicollinearity plus coefficient inference from the
+    Part 1 implementation when available. It is intended as the selection gate
+    artifact that Member C can review before deciding whether to drop features.
     """
-    raise NotImplementedError
+    X, y = _validate_xy(X, y, "run_diagnostics")
+    names = feature_names or [f"x{i}" for i in range(X.shape[1])]
+    X_design = _add_intercept(X)
+
+    if PART1_OLS_FIT is not None:
+        beta = np.asarray(PART1_OLS_FIT(X_design, y), dtype=float).reshape(-1)
+    else:
+        model = LinearRegression(fit_intercept=False)
+        model.fit(X_design, y)
+        beta = np.asarray(model.coef_, dtype=float).reshape(-1)
+
+    fitted = X_design @ beta
+    residuals = y - fitted
+    rss = float(np.sum(residuals**2))
+    dof = max(X_design.shape[0] - X_design.shape[1], 1)
+    sigma2 = rss / dof
+
+    inference_df = None
+    if PART1_COEF_INFERENCE is not None:
+        try:
+            inference_df = PART1_COEF_INFERENCE(X_design, y, beta, sigma2).copy()
+            expected_names = ["Intercept", *names]
+            if len(inference_df) == len(expected_names):
+                inference_df.insert(0, "Feature", expected_names)
+        except Exception:
+            inference_df = None
+
+    return {
+        "coefficients": beta,
+        "predictions_train": fitted,
+        "residuals_train": residuals,
+        "sigma2": float(sigma2),
+        "VIF": _vif_table(X, feature_names=names),
+        "coef_inference": inference_df,
+    }
+
+
+def evaluate_gauss_markov_assumptions(
+    X: np.ndarray,
+    y: np.ndarray,
+    residuals: np.ndarray,
+    feature_names: list[str] | None = None,
+) -> dict:
+    """Evaluate lightweight OLS diagnostics for the real dataset."""
+    X, y = _validate_xy(X, y, "diagnostics")
+    residuals = _as_1d_array(residuals)
+
+    if residuals.shape[0] != y.shape[0]:
+        raise ValueError("residuals must have the same length as y.")
+
+    squared_residuals = residuals**2
+    X_aux = _add_intercept(X)
+    aux_model = LinearRegression(fit_intercept=False)
+    aux_model.fit(X_aux, squared_residuals)
+    aux_pred = aux_model.predict(X_aux)
+    bp_r2 = max(r2_score(squared_residuals, aux_pred), 0.0)
+    bp_stat = X.shape[0] * bp_r2
+    bp_p_value = stats.chi2.sf(bp_stat, df=X.shape[1])
+
+    jb_stat, jb_p_value = stats.jarque_bera(residuals)
+
+    return {
+        "residual_summary": {
+            "mean": float(np.mean(residuals)),
+            "std": float(np.std(residuals, ddof=1)),
+            "min": float(np.min(residuals)),
+            "max": float(np.max(residuals)),
+        },
+        "normality": {
+            "test": "Jarque-Bera",
+            "statistic": float(jb_stat),
+            "p_value": float(jb_p_value),
+        },
+        "breusch_pagan": {
+            "lm_statistic": float(bp_stat),
+            "p_value": float(bp_p_value),
+            "df": int(X.shape[1]),
+        },
+        "VIF": _vif_table(X, feature_names=feature_names),
+    }
+
+
+def cv_scores_from_results(
+    cv_results: pd.DataFrame,
+    param_name: str = "alpha",
+) -> dict:
+    """Convert GridSearchCV rows to the cv_scores contract used for handover."""
+    param_column = f"param_{param_name}"
+    if param_column not in cv_results.columns:
+        raise ValueError(f"Missing column in cv_results: {param_column}")
+
+    lambda_values = cv_results[param_column].astype(float).to_numpy()
+    mean_scores = (-cv_results["mean_test_score"].astype(float)).to_numpy()
+    std_scores = cv_results["std_test_score"].astype(float).to_numpy()
+    best_idx = int(np.argmin(mean_scores))
+
+    return {
+        "lambda_values": lambda_values.tolist(),
+        "mean_scores": mean_scores.tolist(),
+        "std_scores": std_scores.tolist(),
+        "best_lambda": float(lambda_values[best_idx]),
+        "best_cv_rmse": float(mean_scores[best_idx]),
+    }
 
 
 def comparison_table(results: dict) -> pd.DataFrame:
-    """Creates a comparison table summarizing the results of various models.
+    """Create a sorted performance table from ``train_models`` results."""
+    rows = []
+    for model_name, result in results.items():
+        metrics = result.get("metrics", {})
+        train_metrics = result.get("train_metrics", {})
+        rows.append(
+            {
+                "Model": model_name,
+                "MAE": metrics.get("MAE", np.nan),
+                "RMSE": metrics.get("RMSE", np.nan),
+                "R2": metrics.get("R2", np.nan),
+                "Train_RMSE": train_metrics.get("RMSE", np.nan),
+                "Train_R2": train_metrics.get("R2", np.nan),
+                "Source": result.get("source", ""),
+                "Best_Params": result.get("best_params", {}),
+            }
+        )
 
-    Args:
-        results (dict): The dictionary of results returned by `train_models`.
+    table = pd.DataFrame(rows)
+    if table.empty:
+        return table
 
-    Returns:
-        pd.DataFrame: A formatted pandas DataFrame comparing model metrics.
-
-    Raises:
-        NotImplementedError: If the method is not yet implemented.
-    """
-    raise NotImplementedError
-
-
-def plot_predictions(y_test: np.ndarray, results: dict, title: str = "Model Predictions Comparison") -> None:
-    """Plots a comparison of predictions made by different models against the true values.
-
-    Args:
-        y_test (np.ndarray): The true testing target vector.
-        results (dict): The dictionary of results containing model predictions.
-        title (str, optional): The title of the plot. Defaults to "Model Predictions Comparison".
-
-    Raises:
-        NotImplementedError: If the method is not yet implemented.
-    """
-    raise NotImplementedError
-
-
-def plot_coefficients(results: dict, feature_names: list) -> None:
-    """Plots a comparison of the learned coefficients across different models.
-
-    Args:
-        results (dict): The dictionary of results containing model coefficients.
-        feature_names (list): A list of strings representing the feature names.
-
-    Raises:
-        NotImplementedError: If the method is not yet implemented.
-    """
-    raise NotImplementedError
+    table = table.sort_values("RMSE", ascending=True).reset_index(drop=True)
+    table.insert(0, "Rank", np.arange(1, len(table) + 1))
+    return table
 
 
-def hyperparameter_tuning(X_train: np.ndarray, y_train: np.ndarray, model_class: Callable, param_grid: dict, k: int = 5) -> tuple:
-    """Performs k-fold cross-validation to find the best hyperparameters.
+def plot_predictions(
+    y_test: np.ndarray,
+    results: dict,
+    title: str = "Model Predictions Comparison",
+):
+    """Plot actual vs predicted values for each model."""
+    y_test = _as_1d_array(y_test)
+    n_models = max(len(results), 1)
+    fig, axes = plt.subplots(1, n_models, figsize=(5 * n_models, 4), squeeze=False)
+    axes = axes.ravel()
 
-    Args:
-        X_train (np.ndarray): Training feature matrix.
-        y_train (np.ndarray): Training target vector.
-        model_class (Callable): The class of the model to tune.
-        param_grid (dict): A dictionary mapping parameter names to lists of values to evaluate.
-        k (int, optional): The number of folds for cross-validation. Defaults to 5.
+    min_value = y_test.min()
+    max_value = y_test.max()
 
-    Returns:
-        tuple: A tuple containing the best parameters (dict) and the best cross-validation score (float).
+    for ax, (model_name, result) in zip(axes, results.items()):
+        y_pred = _as_1d_array(result["predictions_test"])
+        min_value = min(min_value, y_pred.min())
+        max_value = max(max_value, y_pred.max())
+        ax.scatter(y_test, y_pred, alpha=0.35, s=18)
+        ax.plot([min_value, max_value], [min_value, max_value], color="red", linestyle="--")
+        ax.set_title(model_name)
+        ax.set_xlabel("Actual")
+        ax.set_ylabel("Predicted")
 
-    Raises:
-        NotImplementedError: If the method is not yet implemented.
-    """
-    raise NotImplementedError
+    fig.suptitle(title)
+    fig.tight_layout()
+    return fig
+
+
+def plot_coefficients(results: dict, feature_names: list, top_n: int = 20):
+    """Plot the largest absolute coefficients for linear models."""
+    chosen_name = None
+    chosen_coefficients = None
+
+    for model_name, result in results.items():
+        coefficients = result.get("coefficients")
+        if coefficients is not None:
+            chosen_name = model_name
+            chosen_coefficients = np.asarray(coefficients, dtype=float).reshape(-1)
+            break
+
+    if chosen_coefficients is None:
+        raise ValueError("No model in results contains coefficients to plot.")
+
+    if chosen_coefficients.shape[0] == len(feature_names) + 1:
+        chosen_coefficients = chosen_coefficients[1:]
+
+    if chosen_coefficients.shape[0] != len(feature_names):
+        raise ValueError("Coefficient length does not match feature_names length.")
+
+    coef_df = pd.DataFrame(
+        {"feature": feature_names, "coefficient": chosen_coefficients}
+    )
+    coef_df["abs_coefficient"] = coef_df["coefficient"].abs()
+    coef_df = coef_df.sort_values("abs_coefficient", ascending=False).head(top_n)
+    coef_df = coef_df.sort_values("coefficient", ascending=True)
+
+    fig, ax = plt.subplots(figsize=(9, max(4, 0.35 * len(coef_df))))
+    ax.barh(coef_df["feature"], coef_df["coefficient"])
+    ax.axvline(0, color="black", linewidth=0.8)
+    ax.set_title(f"Top coefficients - {chosen_name}")
+    ax.set_xlabel("Coefficient")
+    fig.tight_layout()
+    return fig
+
+
+def hyperparameter_tuning(
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    model_class: Callable,
+    param_grid: dict,
+    k: int = 5,
+    random_state: int = 42,
+    return_cv_results: bool = False,
+) -> tuple:
+    """Tune a sklearn-compatible estimator with K-fold CV and RMSE scoring."""
+    X_train, y_train = _validate_xy(X_train, y_train, "hyperparameter_tuning")
+
+    if isinstance(model_class, type):
+        estimator = model_class()
+    else:
+        estimator = clone(model_class)
+
+    n_splits = min(int(k), X_train.shape[0])
+    if n_splits < 2:
+        raise ValueError("k must be at least 2 and no larger than the number of rows.")
+
+    cv = KFold(n_splits=n_splits, shuffle=True, random_state=random_state)
+    grid = GridSearchCV(
+        estimator=estimator,
+        param_grid=param_grid,
+        scoring="neg_root_mean_squared_error",
+        cv=cv,
+    )
+    grid.fit(X_train, y_train)
+
+    best_params = dict(grid.best_params_)
+    best_score = float(-grid.best_score_)
+
+    if return_cv_results:
+        cv_results = pd.DataFrame(grid.cv_results_)
+        return best_params, best_score, cv_results
+
+    return best_params, best_score
 
 
 if __name__ == "__main__":
-    print("Model Comparison - Skeleton Demo")
-    # TODO: Thêm demo code
+    try:
+        from data_pipeline import DataPipeline, load_data, train_test_split
+    except ImportError:
+        from part2.data_pipeline import DataPipeline, load_data, train_test_split
+
+    df = load_data("part2/data/melb_data.csv")
+    df_train, df_test = train_test_split(df, test_size=0.3, random_state=42)
+    pipeline = DataPipeline(drop_columns=["Bedroom2"])
+    X_train_demo, y_train_demo = pipeline.fit_transform(df_train)
+    X_test_demo, y_test_demo = pipeline.transform(df_test)
+
+    demo_results = train_models(
+        X_train_demo,
+        y_train_demo,
+        X_test_demo,
+        y_test_demo,
+        kernel_sample_size=600,
+    )
+    print(comparison_table(demo_results))
