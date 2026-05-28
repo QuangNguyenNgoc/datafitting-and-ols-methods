@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict, List, Sequence
-from .utils import Number, Vector, _to_matrix, _shape
+from .matrix_utils import Number, Vector, _to_matrix, _shape
 from .gaussian import _rref
 
 """
