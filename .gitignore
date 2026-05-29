@@ -44,3 +44,6 @@ Thumbs.db
 *.fls
 *.fdb_latexmk
 *.toc
+
+# Local downloaded copies
+docs/part2_team_structure (1).pdf

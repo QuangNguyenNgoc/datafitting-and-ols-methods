@@ -10,6 +10,8 @@ still run while notebooks are being wired together.
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
 from typing import Any, Callable, Dict
 
 import matplotlib.pyplot as plt
@@ -17,10 +19,18 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 from sklearn.base import clone
-from sklearn.kernel_ridge import KernelRidge
 from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import GridSearchCV, KFold
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+try:
+    from part2.advanced_methods import BayesianLinearRegression, kernel_ridge_fit
+except Exception:  # pragma: no cover - supports direct script execution.
+    from advanced_methods import BayesianLinearRegression, kernel_ridge_fit
 
 try:
     from part1.ols_implementation import coef_inference as PART1_COEF_INFERENCE
@@ -41,6 +51,14 @@ except Exception as exc:  # pragma: no cover - fallback depends on runtime path.
     PART1_RIDGE_IMPORT_ERROR = exc
 else:
     PART1_RIDGE_IMPORT_ERROR = None
+
+try:
+    from part1.cross_validation import kfold_cv as PART1_KFOLD_CV
+except Exception as exc:  # pragma: no cover - fallback depends on runtime path.
+    PART1_KFOLD_CV = None
+    PART1_KFOLD_IMPORT_ERROR = exc
+else:
+    PART1_KFOLD_IMPORT_ERROR = None
 
 
 def _as_2d_array(X: np.ndarray) -> np.ndarray:
@@ -178,6 +196,70 @@ def _fit_sklearn_model(model: Any, X_train, y_train, X_test) -> tuple[Any, np.nd
     return fitted_model, fitted_model.predict(X_train), fitted_model.predict(X_test)
 
 
+def _rmse(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+    return float(np.sqrt(mean_squared_error(_as_1d_array(y_true), _as_1d_array(y_pred))))
+
+
+def _ridge_cv_with_part1(
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    lambda_values: np.ndarray,
+    custom_ridge_func: Callable | None,
+    k: int,
+    random_state: int,
+) -> tuple[dict, float, pd.DataFrame]:
+    """Tune Ridge lambda without requiring changes to Part 1 implementation."""
+    rows = []
+
+    for lam in np.asarray(lambda_values, dtype=float).reshape(-1):
+        if custom_ridge_func is not None:
+            def fit_func(X_fold, y_fold, lam=lam):
+                return np.asarray(
+                    custom_ridge_func(_add_intercept(X_fold), y_fold, lam),
+                    dtype=float,
+                ).reshape(-1)
+
+            def predict_func(beta, X_valid):
+                return _add_intercept(X_valid) @ np.asarray(beta, dtype=float).reshape(-1)
+
+            cv_source = "part2.KFold+part1.ridge_fit"
+        else:
+            def fit_func(X_fold, y_fold, lam=lam):
+                model = Ridge(alpha=lam)
+                model.fit(X_fold, y_fold)
+                return model
+
+            def predict_func(model, X_valid):
+                return model.predict(X_valid)
+
+            cv_source = "part2.KFold+sklearn_ridge"
+
+        cv = KFold(n_splits=min(int(k), X_train.shape[0]), shuffle=True, random_state=random_state)
+        fold_scores = []
+        for train_idx, valid_idx in cv.split(X_train):
+            model = fit_func(X_train[train_idx], y_train[train_idx])
+            fold_scores.append(_rmse(y_train[valid_idx], predict_func(model, X_train[valid_idx])))
+        mean_rmse = float(np.mean(fold_scores))
+        std_rmse = float(np.std(fold_scores, ddof=1)) if len(fold_scores) > 1 else 0.0
+
+        rows.append(
+            {
+                "param_alpha": float(lam),
+                "mean_test_score": -float(mean_rmse),
+                "std_test_score": float(std_rmse),
+                "mean_rmse": float(mean_rmse),
+                "fold_scores": fold_scores,
+                "cv_source": cv_source,
+            }
+        )
+
+    cv_results = pd.DataFrame(rows)
+    best_idx = int(cv_results["mean_rmse"].idxmin())
+    best_alpha = float(cv_results.loc[best_idx, "param_alpha"])
+    best_rmse = float(cv_results.loc[best_idx, "mean_rmse"])
+    return {"alpha": best_alpha}, best_rmse, cv_results
+
+
 def train_models(
     X_train: np.ndarray,
     y_train: np.ndarray,
@@ -188,9 +270,13 @@ def train_models(
     sklearn_models: dict | None = None,
     ridge_param_grid: dict | None = None,
     kernel_params: dict | None = None,
+    bayesian_params: dict | None = None,
     k: int = 5,
     random_state: int = 42,
     kernel_sample_size: int = 1000,
+    include_ridge: bool = True,
+    include_kernel: bool = True,
+    include_bayesian: bool = True,
 ) -> Dict[str, Dict[str, Any]]:
     """Train Part 1 OLS/Ridge, Kernel Ridge, and optional sklearn baselines."""
     X_train, y_train = _validate_xy(X_train, y_train, "train")
@@ -226,75 +312,92 @@ def train_models(
             source="sklearn_fallback",
         )
 
-    ridge_param_grid = ridge_param_grid or {"alpha": np.logspace(-3, 5, 17)}
-    ridge_best_params, ridge_best_rmse, ridge_cv_results = hyperparameter_tuning(
-        X_train,
-        y_train,
-        Ridge,
-        ridge_param_grid,
-        k=k,
-        random_state=random_state,
-        return_cv_results=True,
-    )
-    ridge_alpha = float(ridge_best_params.get("alpha", 1.0))
-    ridge_cv_scores = cv_scores_from_results(ridge_cv_results, param_name="alpha")
-    ridge_handover_params = {
-        **ridge_best_params,
-        "lambda": ridge_alpha,
-        "cv_rmse": ridge_best_rmse,
-    }
+    if include_ridge:
+        ridge_param_grid = ridge_param_grid or {"alpha": np.logspace(-3, 5, 17)}
+        ridge_best_params, ridge_best_rmse, ridge_cv_results = hyperparameter_tuning(
+            X_train,
+            y_train,
+            Ridge,
+            ridge_param_grid,
+            k=k,
+            random_state=random_state,
+            return_cv_results=True,
+            custom_ridge_func=custom_ridge_func,
+        )
+        ridge_alpha = float(ridge_best_params.get("alpha", 1.0))
+        ridge_cv_scores = cv_scores_from_results(ridge_cv_results, param_name="alpha")
+        ridge_handover_params = {
+            **ridge_best_params,
+            "lambda": ridge_alpha,
+            "cv_rmse": ridge_best_rmse,
+        }
 
-    if custom_ridge_func is not None:
-        ridge = _fit_custom_ridge(
+        if custom_ridge_func is not None:
+            ridge = _fit_custom_ridge(
+                X_train,
+                y_train,
+                X_test,
+                custom_ridge_func,
+                lam=ridge_alpha,
+            )
+            results["Ridge"] = _make_result(
+                model=ridge["model"],
+                y_train=y_train,
+                y_test=y_test,
+                predictions_train=ridge["predictions_train"],
+                predictions_test=ridge["predictions_test"],
+                coefficients=ridge["coefficients"],
+                best_params=ridge_handover_params,
+                source="part1",
+            )
+        else:
+            ridge_model, y_train_pred, y_test_pred = _fit_sklearn_model(
+                Ridge(alpha=ridge_alpha), X_train, y_train, X_test
+            )
+            results["Ridge"] = _make_result(
+                model=ridge_model,
+                y_train=y_train,
+                y_test=y_test,
+                predictions_train=y_train_pred,
+                predictions_test=y_test_pred,
+                coefficients=_coef_with_intercept(ridge_model),
+                best_params={
+                    **ridge_handover_params,
+                    "fallback_reason": f"Part 1 Ridge unavailable: {PART1_RIDGE_IMPORT_ERROR}",
+                },
+                source="sklearn_fallback",
+            )
+
+        results["Ridge"]["best_lambda"] = ridge_alpha
+        results["Ridge"]["cv_scores"] = ridge_cv_scores
+        results["Ridge"]["cv_results"] = ridge_cv_results
+
+    if include_kernel:
+        kernel_params = kernel_params or {"alpha": 1.0, "kernel": "rbf", "gamma": 0.1}
+        kernel_result = _train_kernel_ridge(
             X_train,
             y_train,
             X_test,
-            custom_ridge_func,
-            lam=ridge_alpha,
+            y_test,
+            kernel_params=kernel_params,
+            random_state=random_state,
+            sample_size=kernel_sample_size,
         )
-        results["Ridge"] = _make_result(
-            model=ridge["model"],
-            y_train=y_train,
-            y_test=y_test,
-            predictions_train=ridge["predictions_train"],
-            predictions_test=ridge["predictions_test"],
-            coefficients=ridge["coefficients"],
-            best_params=ridge_handover_params,
-            source="part1",
-        )
-    else:
-        ridge_model, y_train_pred, y_test_pred = _fit_sklearn_model(
-            Ridge(alpha=ridge_alpha), X_train, y_train, X_test
-        )
-        results["Ridge"] = _make_result(
-            model=ridge_model,
-            y_train=y_train,
-            y_test=y_test,
-            predictions_train=y_train_pred,
-            predictions_test=y_test_pred,
-            coefficients=_coef_with_intercept(ridge_model),
-            best_params={
-                **ridge_handover_params,
-                "fallback_reason": f"Part 1 Ridge unavailable: {PART1_RIDGE_IMPORT_ERROR}",
-            },
-            source="sklearn_fallback",
-        )
+        results["Kernel_Ridge"] = kernel_result
 
-    results["Ridge"]["best_lambda"] = ridge_alpha
-    results["Ridge"]["cv_scores"] = ridge_cv_scores
-    results["Ridge"]["cv_results"] = ridge_cv_results
-
-    kernel_params = kernel_params or {"alpha": 1.0, "kernel": "rbf", "gamma": 0.1}
-    kernel_result = _train_kernel_ridge(
-        X_train,
-        y_train,
-        X_test,
-        y_test,
-        kernel_params=kernel_params,
-        random_state=random_state,
-        sample_size=kernel_sample_size,
-    )
-    results["Kernel_Ridge"] = kernel_result
+    if include_bayesian:
+        bayesian_params = bayesian_params or {
+            "prior_precision": 1e-6,
+            "noise_precision": 1.0,
+            "fit_intercept": True,
+        }
+        results["Bayesian_Linear"] = _train_bayesian_linear(
+            X_train,
+            y_train,
+            X_test,
+            y_test,
+            bayesian_params=bayesian_params,
+        )
 
     for name, model in (sklearn_models or {}).items():
         fitted, y_train_pred, y_test_pred = _fit_sklearn_model(
@@ -323,7 +426,7 @@ def _train_kernel_ridge(
     random_state: int,
     sample_size: int,
 ) -> dict:
-    """Train Kernel Ridge on a deterministic subset to keep the skeleton fast."""
+    """Train Kernel Ridge from ``advanced_methods.py`` on a deterministic subset."""
     rng = np.random.default_rng(random_state)
     n_train = X_train.shape[0]
     sample_size = min(sample_size, n_train)
@@ -336,8 +439,8 @@ def _train_kernel_ridge(
         X_fit = X_train
         y_fit = y_train
 
-    model = KernelRidge(**kernel_params)
-    model.fit(X_fit, y_fit)
+    kernel_artifacts = kernel_ridge_fit(X_fit, y_fit, X_test=None, **kernel_params)
+    model = kernel_artifacts["model"]
 
     y_train_pred = model.predict(X_train)
     y_test_pred = model.predict(X_test)
@@ -348,11 +451,37 @@ def _train_kernel_ridge(
         predictions_train=y_train_pred,
         predictions_test=y_test_pred,
         coefficients=None,
-        best_params=kernel_params,
-        source="sklearn",
+        best_params=kernel_artifacts.get("params", kernel_params),
+        source="advanced_methods",
     )
     result["training_rows_used"] = int(sample_size)
     return result
+
+
+def _train_bayesian_linear(
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    X_test: np.ndarray,
+    y_test: np.ndarray,
+    bayesian_params: dict,
+) -> dict:
+    """Train Bayesian Linear Regression from ``advanced_methods.py``."""
+    model = BayesianLinearRegression(**bayesian_params)
+    model.fit(X_train, y_train)
+
+    y_train_pred = model.predict(X_train)
+    y_test_pred = model.predict(X_test)
+
+    return _make_result(
+        model=model,
+        y_train=y_train,
+        y_test=y_test,
+        predictions_train=y_train_pred,
+        predictions_test=y_test_pred,
+        coefficients=np.asarray(model.posterior_mean, dtype=float),
+        best_params=bayesian_params,
+        source="advanced_methods",
+    )
 
 
 def _vif_table(X: np.ndarray, feature_names: list[str] | None = None) -> pd.DataFrame:
@@ -609,9 +738,23 @@ def hyperparameter_tuning(
     k: int = 5,
     random_state: int = 42,
     return_cv_results: bool = False,
+    custom_ridge_func: Callable | None = None,
 ) -> tuple:
     """Tune a sklearn-compatible estimator with K-fold CV and RMSE scoring."""
     X_train, y_train = _validate_xy(X_train, y_train, "hyperparameter_tuning")
+
+    if model_class is Ridge and "alpha" in param_grid:
+        best_params, best_score, cv_results = _ridge_cv_with_part1(
+            X_train,
+            y_train,
+            lambda_values=param_grid["alpha"],
+            custom_ridge_func=custom_ridge_func,
+            k=k,
+            random_state=random_state,
+        )
+        if return_cv_results:
+            return best_params, best_score, cv_results
+        return best_params, best_score
 
     if isinstance(model_class, type):
         estimator = model_class()
@@ -658,6 +801,6 @@ if __name__ == "__main__":
         y_train_demo,
         X_test_demo,
         y_test_demo,
-        kernel_sample_size=600,
+        kernel_sample_size=300,
     )
     print(comparison_table(demo_results))
