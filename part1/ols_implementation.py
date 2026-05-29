@@ -5,8 +5,6 @@ Cài đặt các hàm OLS cơ bản, tính ma trận chiếu, metrics, suy diễ
 tính VIF và minh họa định lý Gauss-Markov.
 """
 
-import os
-import sys
 import math
 
 import numpy as np
@@ -15,8 +13,6 @@ import pandas as pd
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 import statsmodels.api as sm
 from statsmodels.stats.outliers_influence import variance_inflation_factor
-
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.matrix_utils import (
     mat_transpose,
