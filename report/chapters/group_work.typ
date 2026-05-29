@@ -23,11 +23,11 @@
       [*#text(white)[Đánh giá]*],
     ),
 
-    [1], [24120002], [Đinh Đức Hiếu], [Thành viên], [Thực hiện phần 1 (Phép khử Gauss và các ứng dụng)], [100%],
-    [2], [24120049], [Liên Trung Hiếu], [Thành viên], [Thực hiện phần 3 (Giải hệ phương trình và benchmark)], [100%],
-    [3], [24120064], [Trương Đình Nhật Huy], [Thành viên], [Thực hiện phần 2 (Manim)], [100%],
-    [4], [24120127], [Nguyễn Ngọc Quang], [Nhóm trưởng], [Quản lý đồ án, viết kiểm thử thực nghiệm và tổng hợp báo cáo], [100%],
-    [5], [24120149], [Đặng Quang Tiến], [Thành viên], [Thực hiện phần 2 (Chéo hóa và phân rã SVD)], [100%],
+    [1], [24120002], [Đinh Đức Hiếu], [Thành viên], [Phần 1: Xây dựng thuật toán cốt lõi cho OLS, Ridge, VIF], [100%],
+    [2], [24120049], [Liên Trung Hiếu], [Thành viên], [Phần 2 (ML Modeler): Huấn luyện, tối ưu siêu tham số và so sánh các mô hình], [100%],
+    [3], [24120064], [Trương Đình Nhật Huy], [Thành viên], [Phần 2 (Data Engineer): Làm sạch dữ liệu, EDA và xây dựng Pipeline tiền xử lý], [100%],
+    [4], [24120127], [Nguyễn Ngọc Quang], [Nhóm trưởng], [Quản lý nhóm và Phần 1: Kiểm chứng, phân tích thống kê phương pháp OLS], [100%],
+    [5], [24120149], [Đặng Quang Tiến], [Thành viên], [Phần 2 (Report Analyst): Phân tích chẩn đoán phần dư, trực quan hóa và tổng hợp báo cáo], [100%],
   ),
   caption: [Phân công công việc và đánh giá mức độ đóng góp của các thành viên]
 )
