@@ -130,10 +130,8 @@
 
 #include "chapters/group_work.typ"
 
-#include "chapters/intro.typ"
-#include "chapters/part1_gauss.typ"
-#include "chapters/part2_decomposition.typ"
-#include "chapters/part3_solve_analysis.typ"
-#include "chapters/conclude.typ"
-#include "chapters/appendix.typ"
-#include "chapters/references.typ"
+#include "chapters/01_part1.typ"
+#include "chapters/02_part2.typ"
+#include "chapters/03_conclusion.typ"
+#include "chapters/04_references.typ"
+#include "chapters/05_appendix.typ"
