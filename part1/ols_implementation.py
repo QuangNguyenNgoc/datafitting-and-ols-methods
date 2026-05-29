@@ -27,6 +27,8 @@ from utils.matrix_utils import (
 )
 from utils.inverse import inverse
 
+from part1.utils_verif import _student_t_sf, _student_t_ppf
+
 
 def ols_fit(X, y):
     """
@@ -52,59 +54,53 @@ def hat_matrix(X):
     return X_mat @ np.linalg.pinv(X_mat)
 
 
-def model_metrics(y: np.ndarray, y_hat: np.ndarray, p: int) -> dict:
+def model_metrics(y: list, y_hat: list, p: int) -> dict:
     """
-    Tính các độ đo tổng hợp mô hình:
+    Tính các độ đo tổng hợp mô hình bằng 100% Python gốc:
     - RSS (Residual Sum of Squares)
     - TSS (Total Sum of Squares)
     - R^2 (Hệ số xác định)
     - R^2 hiệu chỉnh (Adjusted R^2)
     - F-statistic
     """
-    y_arr = np.array(y).flatten()
-    y_hat_arr = np.array(y_hat).flatten()
-    n = len(y_arr)
-
-    print(y_arr, type(y_arr))
-    print(y_hat_arr, type(y_hat_arr))
+    y_list = list(y)
+    y_hat_list = list(y_hat)
+    n = len(y_list)
 
     # RSS = e^T * e
-    e = y - y_hat
-    rss = e.T @ e
+    e = vector_subtract(y_list, y_hat_list)
+    rss = vector_dot_product(e, e)
 
     # TSS = y_c^T * y_c
-    y_m = np.mean(y)
-    y_c = y - y_m
-    tss = y_c.T @ y_c
+    y_mean = sum(y_list) / n if n > 0 else 0.0
+    y_centered = [y_i - y_mean for y_i in y_list]
+    tss = vector_dot_product(y_centered, y_centered)
 
     # R^2
-    r2 = 1 - (rss / tss) if tss != 0 else 0.0
+    r2 = 1.0 - (rss / tss) if tss != 0.0 else 0.0
 
     # Adjusted R^2, F-statistic
     if n - p - 1 > 0:
-        adj_r2 = 1 - ((rss / (n - p - 1)) / (tss / (n - 1)))
+        adj_r2 = 1.0 - ((rss / (n - p - 1)) / (tss / (n - 1)))
 
-        # F-statistic = (ESS / p) / (RSS / (n - p - 1)), với ESS = TSS - RSS
-        if rss > 0:
+        if rss > 0.0:
             f_statistic = ((tss - rss) / p) / (rss / (n - p - 1))
         else:
-            f_statistic = np.inf  # Tránh chia 0 trường hợp khớp tuyệt đối
+            f_statistic = float("inf")
     else:
-        adj_r2 = np.nan
-        f_statistic = np.nan
+        adj_r2 = float("nan")
+        f_statistic = float("nan")
 
     return {
-        "RSS": float(rss),
-        "TSS": float(tss),
-        "R2": float(r2),
-        "Adj_R2": float(adj_r2),
-        "F_statistic": float(f_statistic),
+        "RSS": rss,
+        "TSS": tss,
+        "R2": r2,
+        "Adj_R2": adj_r2,
+        "F_statistic": f_statistic,
     }
 
 
-def coef_inference(
-    X: np.ndarray, y: np.ndarray, beta_hat: np.ndarray, sigma2: float
-) -> pd.DataFrame:
+def coef_inference(X: list, y: list, beta_hat: list, sigma2: float) -> pd.DataFrame:
     """
     Suy diễn thống kê cho các hệ số:
     - Standard errors (sai số chuẩn của từng hệ số)
@@ -112,31 +108,36 @@ def coef_inference(
     - p-values
     - Khoảng tin cậy (Confidence Intervals) 95%
     """
-    y = np.asarray(y).flatten()
-    beta_hat = np.asarray(beta_hat).flatten()
+    X_mat = list(X)
+    beta_list = list(beta_hat)
 
-    n = X.shape[0]  # dòng
-    k = X.shape[1]  # cột
-    df = n - k  # Bậc tự do
+    n = len(X_mat)
+    k = len(X_mat[0])
+    df = n - k
 
-    # tính đường chéo chính của ma trận hiệp phương sai để tìm SE
-    variance_beta = sigma2 * np.diagonal(np.linalg.inv(X.T @ X))
-    se = np.sqrt(variance_beta)
+    # ma trận nghịch đảo
+    X_T = mat_transpose(X_mat)
+    X_T_X = mat_mul(X_T, X_mat)
+    X_T_X_inv = inverse(X_T_X)
 
-    # t-statistic = beta_hat / SE
-    t_stats = beta_hat / se
+    # standard errors
+    se = []
+    for i in range(k):
+        variance_beta_i = sigma2 * X_T_X_inv[i][i]
+        se.append(math.sqrt(max(variance_beta_i, 0.0)))
 
-    # Tính p-value từ phân phối Student
-    p_values = 2 * stats.t.sf(np.abs(t_stats), df)
+    # t-statistics, p-values
+    t_stats = [beta_list[i] / se[i] if se[i] > 0 else 0.0 for i in range(k)]
+    p_values = [2.0 * _student_t_sf(abs(t_stats[i]), df) for i in range(k)]
 
-    # Tính khoảng tin cậy 95%
-    t_critical = stats.t.ppf(0.975, df)
-    ci_lower = beta_hat - t_critical * se
-    ci_upper = beta_hat + t_critical * se
+    # khoảng tin cậy 95%
+    t_critical = _student_t_ppf(0.975, df)
+    ci_lower = [beta_list[i] - t_critical * se[i] for i in range(k)]
+    ci_upper = [beta_list[i] + t_critical * se[i] for i in range(k)]
 
     inference_df = pd.DataFrame(
         {
-            "Coefficient": beta_hat,
+            "Coefficient": beta_list,
             "Std_Error": se,
             "t_stat": t_stats,
             "p_value": p_values,
