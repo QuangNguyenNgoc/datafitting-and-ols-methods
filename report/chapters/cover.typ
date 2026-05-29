@@ -15,9 +15,9 @@
   #v(1.2cm)
   #image("../images/logo.png", width: 32%)
   #v(1.2cm)
-  #text(24pt, weight: "bold", fill: rgb("#1E3778"))[BÁO CÁO ĐỒ ÁN 1]
+  #text(24pt, weight: "bold", fill: rgb("#1E3778"))[BÁO CÁO ĐỒ ÁN 2]
   #v(0.4cm)
-  #text(22pt, weight: "bold")[Ma Trận và Cơ Sở của Tính Toán Khoa Học]
+  #text(22pt, weight: "bold")[Data Fitting và Phương Pháp OLS]
   #v(0.4cm)
   #align(center)[
     #set text(15pt)
@@ -82,6 +82,6 @@
 ]
 
 #place(bottom + center)[
-  #text(11pt)[Thành phố Hồ Chí Minh, ngày 20 tháng 4 năm 2026]
+  #text(11pt)[Thành phố Hồ Chí Minh, ngày 29 tháng 5 năm 2026]
   #v(0.5cm)
 ]
