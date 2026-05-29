@@ -1,7 +1,10 @@
 from __future__ import annotations
 from collections.abc import Sequence
 
-from .utils import Matrix, Number, _to_matrix, _shape, _identity, _augment, _swap_rows, _clean_small_entries
+from .matrix_utils import (
+    Matrix, Number, _to_matrix, _shape, _identity,
+    _augment, _swap_rows, _clean_small_entries
+)
 
 """
 Tính ma trận nghịch đảo bằng Gauss-Jordan.

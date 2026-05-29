@@ -10,16 +10,14 @@ import os
 import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from part1.inverse import inverse
-from part1.rank_basis import rank_and_basis
-
-Number = Union[int, float]
-Matrix = List[List[float]]
-Vector = List[float]
+from inverse import inverse
+from rank_basis import rank_and_basis
+from matrix_utils import Number, Matrix, Vector, _identity, mat_mul, mat_transpose
 
 _EPS = 1e-9
 
 # ──────────────────────────────────────────────
+
 
 def _copy(M: Matrix) -> Matrix:
     """
@@ -33,17 +31,6 @@ def _copy(M: Matrix) -> Matrix:
     """
     return [row[:] for row in M]
 
-def _identity(n: int) -> Matrix:
-    """
-    Tạo ma trận đơn vị kích thước n x n.
-
-    Đầu vào:
-    - n: kích thước ma trận
-
-    Đầu ra:
-    - ma trận đơn vị kích thước n x n
-    """
-    return [[1.0 if i == j else 0.0 for j in range(n)] for i in range(n)]
 
 def get_column(M: Matrix, col: int) -> Vector:
     """
@@ -58,35 +45,6 @@ def get_column(M: Matrix, col: int) -> Vector:
     """
     return [row[col] for row in M]
 
-def mat_mul(A: Matrix, B: Matrix) -> Matrix:
-    """
-    Nhân hai ma trận A (m x k) và B (k x n).
-
-    Đầu vào:
-    - A: ma trận kích thước m x k
-    - B: ma trận kích thước k x n
-
-    Đầu ra:
-    - ma trận tích kích thước m x n
-    """
-    m, k, n = len(A), len(A[0]), len(B[0])
-    return [
-        [sum(A[i][t] * B[t][j] for t in range(k)) for j in range(n)]
-        for i in range(m)
-    ]
-
-def mat_transpose(M: Matrix) -> Matrix:
-    """
-    Chuyển vị ma trận M (m x n) thành ma trận n x m.
-
-    Đầu vào:
-    - M: ma trận kích thước m x n
-
-    Đầu ra:
-    - ma trận chuyển vị kích thước n x m
-    """
-    m, n = len(M), len(M[0])
-    return [[M[i][j] for i in range(m)] for j in range(n)]
 
 def _validate_matrix(M: Sequence[Sequence[Number]], label: str = "Ma trận") -> Matrix:
     """
@@ -113,7 +71,9 @@ def _validate_matrix(M: Sequence[Sequence[Number]], label: str = "Ma trận") ->
                 raise ValueError(f"{label} chứa giá trị NaN hoặc Inf không hợp lệ.")
     return mat
 
+
 # ──────────────────────────────────────────────
+
 
 def gauss_inverse(M: Matrix) -> Matrix:
     try:
@@ -121,7 +81,9 @@ def gauss_inverse(M: Matrix) -> Matrix:
     except ValueError as e:
         raise ValueError("Ma trận suy biến, không tồn tại ma trận nghịch đảo.") from e
 
+
 # ──────────────────────────────────────────────
+
 
 def char_poly(M: Matrix) -> List[float]:
     """
@@ -143,6 +105,7 @@ def char_poly(M: Matrix) -> List[float]:
         c.append(ak)
         B = [[MB[i][j] + (ak if i == j else 0.0) for j in range(n)] for i in range(n)]
     return c
+
 
 def find_roots(coeffs: List[float]) -> List[float]:
     """
@@ -167,7 +130,9 @@ def find_roots(coeffs: List[float]) -> List[float]:
                 roots[k] -= p_val / denom
     return [float(r.real) for r in roots if abs(r.imag) < 1e-3]
 
+
 # ──────────────────────────────────────────────
+
 
 def _gram_schmidt(vectors: List[Vector]) -> List[Vector]:
     """Trực chuẩn hóa danh sách vector bằng Gram-Schmidt."""
@@ -181,6 +146,7 @@ def _gram_schmidt(vectors: List[Vector]) -> List[Vector]:
             ortho.append([x / norm for x in v])
     return ortho
 
+
 def eigenspace_basis(M: Matrix, eigenvalue: float) -> List[Vector]:
     """
     Tìm cơ sở trực chuẩn của không gian riêng (M - lambda*I)x = 0.
@@ -192,8 +158,10 @@ def eigenspace_basis(M: Matrix, eigenvalue: float) -> List[Vector]:
     - list các vector cơ sở trực chuẩn của không gian riêng tương ứng
     """
     n = len(M)
-    shifted = [[M[i][j] - (eigenvalue if i == j else 0.0) for j in range(n)] for i in range(n)]
-    
+    shifted = [
+        [M[i][j] - (eigenvalue if i == j else 0.0) for j in range(n)] for i in range(n)
+    ]
+
     info = rank_and_basis(shifted, eps=1e-4)
     basis = info["null_space_basis"]
 
@@ -208,7 +176,9 @@ def eigenspace_basis(M: Matrix, eigenvalue: float) -> List[Vector]:
 
     return _gram_schmidt(basis)
 
+
 # ──────────────────────────────────────────────
+
 
 def find_eigen(M: Matrix) -> Tuple[List[float], Matrix]:
     """
@@ -268,7 +238,9 @@ def find_eigen(M: Matrix) -> Tuple[List[float], Matrix]:
         idx = np.argsort(vals)[::-1]
         return vals[idx].tolist(), vecs[:, idx].tolist()
 
+
 # ──────────────────────────────────────────────
+
 
 def check_diagonalizable(evs: List[float], P: Matrix) -> Tuple[bool, str]:
     """
@@ -288,7 +260,11 @@ def check_diagonalizable(evs: List[float], P: Matrix) -> Tuple[bool, str]:
     info = rank_and_basis(P, eps=_EPS)
     if info["rank"] == n:
         return True, "Ma trận có đủ n vector riêng độc lập tuyến tính."
-    return False, "Ma trận không chéo hóa được: Không đủ n vector riêng độc lập tuyến tính."
+    return (
+        False,
+        "Ma trận không chéo hóa được: Không đủ n vector riêng độc lập tuyến tính.",
+    )
+
 
 def diagonalize(A: Sequence[Sequence[Number]]) -> Tuple[Matrix, Matrix, Matrix]:
     """
@@ -315,7 +291,9 @@ def diagonalize(A: Sequence[Sequence[Number]]) -> Tuple[Matrix, Matrix, Matrix]:
     P_inv = gauss_inverse(P)
     return P, D, P_inv
 
+
 # ──────────────────────────────────────────────
+
 
 def verify(A: Matrix, P: Matrix, D: Matrix, P_inv: Matrix) -> bool:
     """
@@ -336,14 +314,18 @@ def verify(A: Matrix, P: Matrix, D: Matrix, P_inv: Matrix) -> bool:
     err_recon = float(np.max(np.abs(arrA - rebuilt)))
     print("* Kiểm chứng chéo hóa")
     print(f"Sai số tái cấu trúc ||A - P*D*P^-1||max = {err_recon:.2e}")
-    print("Cài đặt chéo hóa đúng (A ~ P*D*P^-1)." if err_recon < 1e-4
-          else "Cài đặt chéo hóa có thể có sai số cao.")
+    print(
+        "Cài đặt chéo hóa đúng (A ~ P*D*P^-1)."
+        if err_recon < 1e-4
+        else "Cài đặt chéo hóa có thể có sai số cao."
+    )
 
     np_evs = np.sort(np.linalg.eigvals(arrA).real)[::-1]
     my_evs = np.sort(np.diag(np.array(D)))[::-1]
     err_ev = float(np.max(np.abs(my_evs - np_evs)))
     print(f"Sai số giá trị riêng so với NumPy = {err_ev:.2e}")
     return err_recon < 1e-4 and err_ev < 1e-4
+
 
 def demo_diagonalize(A: Sequence[Sequence[Number]]) -> bool:
     """
@@ -369,13 +351,17 @@ def demo_diagonalize(A: Sequence[Sequence[Number]]) -> bool:
         print("  " + " ".join(f"{v:8.4f}" for v in row))
     return verify(mat, P, D, P_inv)
 
+
 # ──────────────────────────────────────────────
+
 
 def main() -> None:
     try:
         size = int(input("Nhập kích thước ma trận vuông n = "))
-        print(f"Nhập ma trận {size}x{size} (mỗi dòng cách nhau bởi dấu Enter, "
-              "các phần tử cách nhau bởi khoảng trắng):")
+        print(
+            f"Nhập ma trận {size}x{size} (mỗi dòng cách nhau bởi dấu Enter, "
+            "các phần tử cách nhau bởi khoảng trắng):"
+        )
         rows = []
         for i in range(size):
             row = list(map(float, input().strip().split()))
@@ -386,6 +372,7 @@ def main() -> None:
         demo_diagonalize(rows)
     except ValueError as e:
         print(f"Lỗi: {e}")
+
 
 if __name__ == "__main__":
     main()

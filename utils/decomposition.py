@@ -15,17 +15,13 @@ from typing import List, Sequence, Tuple, Union
 import numpy as np
 
 from diagonalization import (
-    Matrix,
-    Number,
-    Vector,
     _EPS,
     _gram_schmidt,
     _validate_matrix,
     find_eigen,
     get_column,
-    mat_mul,
-    mat_transpose,
 )
+from matrix_utils import Matrix, Number, Vector, mat_mul, mat_transpose
 
 # ──────────────────────────────────────────────
 

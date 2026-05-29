@@ -1,7 +1,7 @@
 from __future__ import annotations
 from collections.abc import Sequence
 
-from .utils import Number, _shape, _to_matrix
+from .matrix_utils import Number, _shape, _to_matrix
 from .gaussian import _forward_elimination_ref
 
 """
