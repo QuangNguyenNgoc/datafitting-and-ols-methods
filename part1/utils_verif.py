@@ -1,5 +1,5 @@
 import math
-import panda as pd
+import pandas as pd
 
 
 def _student_t_sf(t_val: float, df: int) -> float:
