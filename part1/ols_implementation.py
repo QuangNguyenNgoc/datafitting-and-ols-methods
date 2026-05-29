@@ -6,6 +6,7 @@ tính VIF và minh họa định lý Gauss-Markov.
 """
 
 import math
+import random
 
 import numpy as np
 import scipy.stats as stats
@@ -170,17 +171,79 @@ def vif(X):
 
 def gauss_markov_simulation(n_simulations=1000, n_samples=100):
     """
-    9. Minh họa định lý Gauss-Markov:
-       Mô phỏng Monte Carlo để kiểm chứng:
-       - Tính không chệch: E[beta_hat] = beta
-       - OLS estimator có phương sai nhỏ nhất trong lớp các ước lượng tuyến tính không chệch (BLUE).
+    Minh họa định lý Gauss-Markov bằng Monte Carlo:
+    - Tính không chệch: E[beta_hat] = beta
+    - Tính BLUE: Var(beta_OLS) < Var(beta_Alternative)
     """
-    # TODO: Implement Monte Carlo simulation for Gauss-Markov theorem
-    pass
+    # khởi tạo ma trận X cố định và beta thực
+    # X có 1 cột bias và 2 cột đặc trưng ngẫu nhiên
+    random.seed(42)
+    p = 2
+    X = [[1.0, random.uniform(0, 10), random.uniform(-5, 5)] for _ in range(n_samples)]
+    true_beta = [3.0, 1.5, -2.0]
+    k = len(true_beta)
 
+    # tiền tính toán ma trận ánh xạ cho OLS (100% data)
+    X_T = mat_transpose(X)
+    X_T_X_inv = inverse(mat_mul(X_T, X))
+    # C_ols = (X^T X)^-1 X^T
+    C_ols = mat_mul(X_T_X_inv, X_T)
 
-if __name__ == "__main__":
-    # TODO: Khởi tạo dữ liệu giả lập (dummy data)
-    # TODO: Gọi các hàm trên để minh họa
-    # TODO: Kiểm chứng kết quả với thư viện chuẩn (NumPy/sklearn)
-    print("OLS Implementation - Demo")
+    # tiền tính toán ma trận ánh xạ cho Alternative Estimator (60% data)
+    n_alt = int(n_samples * 0.6)
+    X_alt = X[:n_alt]
+    X_alt_T = mat_transpose(X_alt)
+    X_alt_T_X_alt_inv = inverse(mat_mul(X_alt_T, X_alt))
+    C_alt = mat_mul(X_alt_T_X_alt_inv, X_alt_T)
+
+    # lưu trữ kết quả của 1000 vòng lặp
+    beta_ols_results = {j: [] for j in range(k)}
+    beta_alt_results = {j: [] for j in range(k)}
+
+    # VÒNG LẶP MONTE CARLO
+    for _ in range(n_simulations):
+        # tạo nhiễu e ~ N(0, sigma^2)
+        sigma = 2.0
+        e = [random.gauss(0, sigma) for _ in range(n_samples)]
+
+        # sinh biến mục tiêu y = X*beta + e
+        y = [
+            sum(X[i][j] * true_beta[j] for j in range(k)) + e[i]
+            for i in range(n_samples)
+        ]
+
+        beta_ols = matrix_vector_multiply(C_ols, y)
+        beta_alt = matrix_vector_multiply(C_alt, y[:n_alt])
+
+        # Lưu kết quả
+        for j in range(k):
+            beta_ols_results[j].append(beta_ols[j])
+            beta_alt_results[j].append(beta_alt[j])
+
+    # thống kê
+    report = []
+    for j in range(k):
+        # E[beta_hat]
+        e_ols = sum(beta_ols_results[j]) / n_simulations
+        e_alt = sum(beta_alt_results[j]) / n_simulations
+
+        # Var(beta_hat)
+        var_ols = sum((b - e_ols) ** 2 for b in beta_ols_results[j]) / (
+            n_simulations - 1
+        )
+        var_alt = sum((b - e_alt) ** 2 for b in beta_alt_results[j]) / (
+            n_simulations - 1
+        )
+
+        report.append(
+            {
+                "beta_idx": j,
+                "true_val": true_beta[j],
+                "E_ols": e_ols,
+                "E_alt": e_alt,
+                "Var_ols": var_ols,
+                "Var_alt": var_alt,
+            }
+        )
+
+    return report
