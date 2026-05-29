@@ -11,11 +11,19 @@ import sys
 from datetime import datetime
 
 # Force UTF-8 output on Windows consoles (handles Vietnamese path characters)
-sys.stdout.reconfigure(encoding='utf-8')
+sys.stdout.reconfigure(encoding="utf-8")
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # ── Imports: Our custom modules ──────────────────────────────────────────────
-from test_synthetic_data import generate_synthetic_data
-from ols_implementation import ols_fit, hat_matrix, model_metrics, coef_inference, vif
+from part1.test_synthetic_data import generate_synthetic_data
+from part1.ols_implementation import (
+    ols_fit,
+    hat_matrix,
+    model_metrics,
+    coef_inference,
+    vif,
+)
 
 # ── Imports: Reference libraries for comparison ──────────────────────────────
 from sklearn.linear_model import LinearRegression
@@ -33,17 +41,18 @@ def run_validation():
     # X has shape (50, 4): column 0 is the intercept column of ones.
 
     results = {
-        'n': n, 'p': p,
-        'true_beta': true_beta,
-        'X_shape': X.shape,
-        'y_shape': y.shape,
+        "n": n,
+        "p": p,
+        "true_beta": true_beta,
+        "X_shape": X.shape,
+        "y_shape": y.shape,
     }
 
     # ── Step 2: Run OUR custom ols_fit ────────────────────────────────────
     beta_custom = ols_fit(X, y)
     y_hat_custom = X @ beta_custom
-    results['beta_custom'] = beta_custom
-    results['y_hat_custom'] = y_hat_custom
+    results["beta_custom"] = beta_custom
+    results["y_hat_custom"] = y_hat_custom
 
     # ── Step 3: Run sklearn LinearRegression (baseline 1) ─────────────────
     # sklearn expects X without intercept column; it adds its own internally.
@@ -52,51 +61,51 @@ def run_validation():
     lr.fit(X_no_intercept, y)
     beta_sklearn = np.concatenate([[lr.intercept_], lr.coef_])
     y_hat_sklearn = lr.predict(X_no_intercept)
-    results['beta_sklearn'] = beta_sklearn
-    results['y_hat_sklearn'] = y_hat_sklearn
+    results["beta_sklearn"] = beta_sklearn
+    results["y_hat_sklearn"] = y_hat_sklearn
 
     # ── Step 4: Run statsmodels OLS (baseline 2) ──────────────────────────
     sm_model = sm.OLS(y, X).fit()
     beta_sm = np.array(sm_model.params)
     y_hat_sm = sm_model.predict(X)
-    results['beta_sm'] = beta_sm
-    results['y_hat_sm'] = y_hat_sm
-    results['sm_summary'] = sm_model
+    results["beta_sm"] = beta_sm
+    results["y_hat_sm"] = y_hat_sm
+    results["sm_summary"] = sm_model
 
     # ── Step 5: Compute metrics via our custom function ───────────────────
     metrics_custom = model_metrics(y, y_hat_custom, p)
-    results['metrics_custom'] = metrics_custom
+    results["metrics_custom"] = metrics_custom
 
     # ── Step 6: Manually compute RSS, TSS, R2 for the report ──────────────
     residuals = y - y_hat_custom
-    RSS = float(np.sum(residuals ** 2))
+    RSS = float(np.sum(residuals**2))
     y_mean = float(np.mean(y))
     TSS = float(np.sum((y - y_mean) ** 2))
     R2_manual = 1.0 - RSS / TSS
-    results['RSS'] = RSS
-    results['TSS'] = TSS
-    results['y_mean'] = y_mean
-    results['R2_manual'] = R2_manual
+    results["RSS"] = RSS
+    results["TSS"] = TSS
+    results["y_mean"] = y_mean
+    results["R2_manual"] = R2_manual
 
     # ── Step 7: Hat matrix properties ─────────────────────────────────────
     H = hat_matrix(X)
     H_squared = H @ H
     idempotent_error = np.max(np.abs(H - H_squared))
     trace_H = np.trace(H)
-    results['H_shape'] = H.shape
-    results['idempotent_error'] = idempotent_error
-    results['trace_H'] = trace_H
+    results["H_shape"] = H.shape
+    results["idempotent_error"] = idempotent_error
+    results["trace_H"] = trace_H
 
     # ── Step 8: VIF computation ───────────────────────────────────────────
     # VIF is computed on the feature columns only (exclude intercept column)
     vif_df = vif(X[:, 1:])
-    results['vif_df'] = vif_df
+    results["vif_df"] = vif_df
 
     # ── Step 9: Coefficient inference ─────────────────────────────────────
     sigma2 = RSS / (n - p - 1)
     inference_df = coef_inference(X, y, beta_custom, sigma2)
-    results['inference_df'] = inference_df
-    results['sigma2'] = sigma2
+    results["inference_df"] = inference_df
+    results["sigma2"] = sigma2
 
     return results
 
@@ -110,49 +119,51 @@ def run_assertions(results):
     tests = []
 
     # Test 1: Beta coefficients match sklearn
-    diff_sk = np.max(np.abs(results['beta_custom'] - results['beta_sklearn']))
+    diff_sk = np.max(np.abs(results["beta_custom"] - results["beta_sklearn"]))
     passed = diff_sk < tol
-    tests.append((
-        "Beta vs sklearn",
-        passed,
-        f"Max |beta_custom - beta_sklearn| = {diff_sk:.2e}"
-    ))
+    tests.append(
+        ("Beta vs sklearn", passed, f"Max |beta_custom - beta_sklearn| = {diff_sk:.2e}")
+    )
 
     # Test 2: Beta coefficients match statsmodels
-    diff_sm = np.max(np.abs(results['beta_custom'] - results['beta_sm']))
+    diff_sm = np.max(np.abs(results["beta_custom"] - results["beta_sm"]))
     passed = diff_sm < tol
-    tests.append((
-        "Beta vs statsmodels",
-        passed,
-        f"Max |beta_custom - beta_statsmodels| = {diff_sm:.2e}"
-    ))
+    tests.append(
+        (
+            "Beta vs statsmodels",
+            passed,
+            f"Max |beta_custom - beta_statsmodels| = {diff_sm:.2e}",
+        )
+    )
 
     # Test 3: R2 matches manual computation
-    diff_r2 = abs(results['metrics_custom']['R2'] - results['R2_manual'])
+    diff_r2 = abs(results["metrics_custom"]["R2"] - results["R2_manual"])
     passed = diff_r2 < tol
-    tests.append((
-        "R2 consistency",
-        passed,
-        f"|R2_function - R2_manual| = {diff_r2:.2e}"
-    ))
+    tests.append(
+        ("R2 consistency", passed, f"|R2_function - R2_manual| = {diff_r2:.2e}")
+    )
 
     # Test 4: Hat matrix is idempotent
-    passed = results['idempotent_error'] < tol
-    tests.append((
-        "Hat matrix idempotency",
-        passed,
-        f"Max |H - H^2| = {results['idempotent_error']:.2e}"
-    ))
+    passed = results["idempotent_error"] < tol
+    tests.append(
+        (
+            "Hat matrix idempotency",
+            passed,
+            f"Max |H - H^2| = {results['idempotent_error']:.2e}",
+        )
+    )
 
     # Test 5: trace(H) == p + 1 (number of parameters)
-    expected_trace = results['p'] + 1
-    diff_trace = abs(results['trace_H'] - expected_trace)
+    expected_trace = results["p"] + 1
+    diff_trace = abs(results["trace_H"] - expected_trace)
     passed = diff_trace < tol
-    tests.append((
-        "Hat matrix trace",
-        passed,
-        f"tr(H) = {results['trace_H']:.6f}, expected {expected_trace}"
-    ))
+    tests.append(
+        (
+            "Hat matrix trace",
+            passed,
+            f"tr(H) = {results['trace_H']:.6f}, expected {expected_trace}",
+        )
+    )
 
     return tests
 
@@ -162,27 +173,27 @@ def generate_report(results, tests):
     Auto-generate the formal mathematical validation report as Markdown.
     """
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    n = results['n']
-    p = results['p']
+    n = results["n"]
+    p = results["p"]
 
-    beta_c = results['beta_custom']
-    beta_sk = results['beta_sklearn']
-    beta_sm = results['beta_sm']
-    true_b = results['true_beta']
+    beta_c = results["beta_custom"]
+    beta_sk = results["beta_sklearn"]
+    beta_sm = results["beta_sm"]
+    true_b = results["true_beta"]
 
-    RSS = results['RSS']
-    TSS = results['TSS']
-    y_mean = results['y_mean']
-    R2 = results['R2_manual']
-    metrics = results['metrics_custom']
+    RSS = results["RSS"]
+    TSS = results["TSS"]
+    y_mean = results["y_mean"]
+    R2 = results["R2_manual"]
+    metrics = results["metrics_custom"]
 
-    H_shape = results['H_shape']
-    trace_H = results['trace_H']
-    idemp_err = results['idempotent_error']
+    H_shape = results["H_shape"]
+    trace_H = results["trace_H"]
+    idemp_err = results["idempotent_error"]
 
-    vif_df = results['vif_df']
-    inf_df = results['inference_df']
-    sigma2 = results['sigma2']
+    vif_df = results["vif_df"]
+    inf_df = results["inference_df"]
+    sigma2 = results["sigma2"]
 
     # ── Build the coefficient comparison table rows ───────────────────────
     coef_rows = ""
@@ -204,7 +215,7 @@ def generate_report(results, tests):
     inf_rows = ""
     for idx, row in inf_df.iterrows():
         label = f"$\\beta_{{{idx}}}$"
-        sig = "\\*" if row['p_value'] < 0.05 else ""
+        sig = "\\*" if row["p_value"] < 0.05 else ""
         inf_rows += (
             f"| {label} | {row['Coefficient']:.6f} | {row['Std_Error']:.6f} "
             f"| {row['t_stat']:.4f} | {row['p_value']:.6f} | {sig} |\n"
