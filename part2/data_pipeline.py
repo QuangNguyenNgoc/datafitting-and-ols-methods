@@ -1,11 +1,11 @@
 """
 Data Pipeline
 ==============
-Tiền xử lý dữ liệu cho Part 2 (OOP Design).
 """
 
 import numpy as np
 import pandas as pd
+
 
 
 def load_data(filepath: str) -> pd.DataFrame:
@@ -13,6 +13,7 @@ def load_data(filepath: str) -> pd.DataFrame:
     if data.empty:
         raise ValueError("Dataset is empty")
     return data
+
 
 
 def train_test_split(
@@ -83,6 +84,8 @@ class DataPipeline:
             "Regionname",
         ]
 
+
+
     def _prepare_xy(self, df: pd.DataFrame) -> tuple:
         if self.target_name not in df.columns:
             raise ValueError(f"Missing target column: {self.target_name}")
@@ -90,6 +93,8 @@ class DataPipeline:
         X_df = df.drop(columns=[self.target_name]).copy()
         y_arr = df[self.target_name].to_numpy()
         return X_df, y_arr
+
+
 
     def _validate_schema(self, X_df: pd.DataFrame) -> None:
         missing = [
@@ -99,6 +104,8 @@ class DataPipeline:
         ]
         if missing:
             raise ValueError(f"Missing required columns: {missing}")
+
+
 
     def _repair_invalid_values(self, X_df: pd.DataFrame) -> None:
         for column in ["Rooms", "Bathroom", "Car", "Distance", "Propertycount"]:
@@ -123,6 +130,8 @@ class DataPipeline:
             X_df["Landsize_zero_or_missing"] = missing.astype(float)
             X_df.loc[X_df["Landsize"] <= 0, "Landsize"] = np.nan
 
+
+
     def _impute_missing(self, X_df: pd.DataFrame, is_train: bool) -> pd.DataFrame:
         """Điền missing numeric bằng median đã học từ train data."""
         result = X_df.copy()
@@ -145,6 +154,8 @@ class DataPipeline:
             self.imputation_values["values"]
         )
         return result
+
+
 
     def _engineer_and_encode(self, X_df: pd.DataFrame, is_train: bool) -> pd.DataFrame:
         result = X_df.copy()
@@ -187,6 +198,8 @@ class DataPipeline:
 
         return result.replace([np.inf, -np.inf], np.nan)
 
+
+
     def _sale_years(self, X_df: pd.DataFrame, is_train: bool) -> pd.Series:
         """Lấy năm bán từ Date và dùng fallback học từ train data."""
         if "Date" in X_df.columns:
@@ -199,6 +212,8 @@ class DataPipeline:
             self.sale_year_fallback = int(median_year) if not pd.isna(median_year) else 2017
 
         return years.fillna(self.sale_year_fallback)
+
+
 
     def _scale_features(self, X_df: pd.DataFrame, is_train: bool) -> pd.DataFrame:
         non_numeric_columns = X_df.select_dtypes(exclude=np.number).columns.tolist()
@@ -228,6 +243,8 @@ class DataPipeline:
 
         return result
 
+
+
     def fit_transform(self, df: pd.DataFrame) -> tuple:
         X_df, y_train = self._prepare_xy(df)
         self._validate_schema(X_df)
@@ -238,6 +255,8 @@ class DataPipeline:
 
         self.feature_names = X_df.columns.tolist()
         return X_df.to_numpy(dtype=float), y_train
+
+
 
     def transform(self, df: pd.DataFrame) -> tuple:
         if not self.imputation_values or not self.encoded_columns or not self.scalers:
