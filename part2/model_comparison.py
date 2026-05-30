@@ -300,24 +300,28 @@ def train_models(
     return results
 
 
+import random
+
+
 def _train_kernel_ridge(
-    X_train: np.ndarray,
-    y_train: np.ndarray,
-    X_test: np.ndarray,
-    y_test: np.ndarray,
+    X_train: list,
+    y_train: list,
+    X_test: list,
+    y_test: list,
     kernel_params: dict,
     random_state: int,
     sample_size: int,
 ) -> dict:
-    """Train Kernel Ridge from ``advanced_methods.py`` on a deterministic subset."""
-    rng = np.random.default_rng(random_state)
-    n_train = X_train.shape[0]
+    """Train Kernel Ridge thuần Python, lấy mẫu bằng random gốc."""
+    random.seed(random_state)
+    n_train = len(X_train)
     sample_size = min(sample_size, n_train)
 
+    # Lấy mẫu ngẫu nhiên không hoàn lại bằng Python list
     if sample_size < n_train:
-        train_idx = rng.choice(n_train, size=sample_size, replace=False)
-        X_fit = X_train[train_idx]
-        y_fit = y_train[train_idx]
+        train_idx = random.sample(range(n_train), sample_size)
+        X_fit = [X_train[i] for i in train_idx]
+        y_fit = [y_train[i] for i in train_idx]
     else:
         X_fit = X_train
         y_fit = y_train
@@ -325,20 +329,16 @@ def _train_kernel_ridge(
     kernel_artifacts = kernel_ridge_fit(X_fit, y_fit, X_test=None, **kernel_params)
     model = kernel_artifacts["model"]
 
-    y_train_pred = model.predict(X_train)
-    y_test_pred = model.predict(X_test)
-    result = _make_result(
+    return _make_result(
         model=model,
         y_train=y_train,
         y_test=y_test,
-        predictions_train=y_train_pred,
-        predictions_test=y_test_pred,
+        predictions_train=model.predict(X_train),
+        predictions_test=model.predict(X_test),
         coefficients=None,
         best_params=kernel_artifacts.get("params", kernel_params),
         source="advanced_methods",
     )
-    result["training_rows_used"] = int(sample_size)
-    return result
 
 
 def _train_bayesian_linear(
