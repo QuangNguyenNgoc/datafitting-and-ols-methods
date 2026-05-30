@@ -113,20 +113,26 @@ def _make_result(
 
 
 def _fit_custom_ols(
-    X_train: np.ndarray,
-    y_train: np.ndarray,
-    X_test: np.ndarray,
+    X_train: list,
+    y_train: list,
+    X_test: list,
     custom_ols_func: Callable,
 ) -> dict:
     X_train_design = _add_intercept(X_train)
     X_test_design = _add_intercept(X_test)
-    beta = np.asarray(custom_ols_func(X_train_design, y_train), dtype=float).reshape(-1)
+
+    # 1. Gọi hàm học OLS từ Part 1
+    beta = custom_ols_func(X_train_design, y_train)
+
+    # 2. Tính y_pred bằng vòng lặp List thuần (Thay thế cho X @ beta của NumPy)
+    y_train_pred = [sum(x * b for x, b in zip(row, beta)) for row in X_train_design]
+    y_test_pred = [sum(x * b for x, b in zip(row, beta)) for row in X_test_design]
 
     return {
         "model": {"type": "custom_ols", "fit_function": custom_ols_func},
         "coefficients": beta,
-        "predictions_train": X_train_design @ beta,
-        "predictions_test": X_test_design @ beta,
+        "predictions_train": y_train_pred,
+        "predictions_test": y_test_pred,
     }
 
 
