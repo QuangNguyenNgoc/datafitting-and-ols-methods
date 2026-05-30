@@ -75,6 +75,13 @@ def compute_metrics(y_true: list, y_pred: list) -> dict:
     }
 
 
+def _to_list(data) -> list:
+    """Ép mọi định dạng (NumPy, Pandas, Tuple) về List thuần Python."""
+    if hasattr(data, "tolist"):
+        return data.tolist()
+    return list(data)
+
+
 def _make_result(
     model: Any,
     y_train: np.ndarray,
