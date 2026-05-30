@@ -137,17 +137,21 @@ def _fit_custom_ols(
 
 
 def _fit_custom_ridge(
-    X_train: np.ndarray,
-    y_train: np.ndarray,
-    X_test: np.ndarray,
+    X_train: list,
+    y_train: list,
+    X_test: list,
     custom_ridge_func: Callable,
     lam: float,
 ) -> dict:
     X_train_design = _add_intercept(X_train)
     X_test_design = _add_intercept(X_test)
-    beta = np.asarray(
-        custom_ridge_func(X_train_design, y_train, lam), dtype=float
-    ).reshape(-1)
+
+    # 1. Gọi hàm học Ridge từ Part 1
+    beta = custom_ridge_func(X_train_design, y_train, lam)
+
+    # 2. Tính y_pred bằng List thuần
+    y_train_pred = [sum(x * b for x, b in zip(row, beta)) for row in X_train_design]
+    y_test_pred = [sum(x * b for x, b in zip(row, beta)) for row in X_test_design]
 
     return {
         "model": {
@@ -156,8 +160,8 @@ def _fit_custom_ridge(
             "lambda": float(lam),
         },
         "coefficients": beta,
-        "predictions_train": X_train_design @ beta,
-        "predictions_test": X_test_design @ beta,
+        "predictions_train": y_train_pred,
+        "predictions_test": y_test_pred,
     }
 
 
