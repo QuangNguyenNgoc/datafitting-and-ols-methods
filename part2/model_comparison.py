@@ -30,6 +30,7 @@ except Exception:  # pragma: no cover - supports direct script execution.
     from advanced_methods import BayesianLinearRegression, kernel_ridge_fit
 
 from part1.ols_implementation import ols_fit, coef_inference, vif, model_metrics
+from part1.ridge_lasso import ridge_fit
 from part1.cross_validation import kfold_cv
 
 try:
@@ -174,10 +175,10 @@ def _fit_sklearn_model(
 
 
 def train_models(
-    X_train: np.ndarray,
-    y_train: np.ndarray,
-    X_test: np.ndarray,
-    y_test: np.ndarray,
+    X_train,
+    y_train,
+    X_test,
+    y_test,
     custom_ols_func: Callable | None = None,
     custom_ridge_func: Callable | None = None,
     sklearn_models: dict | None = None,
@@ -191,45 +192,35 @@ def train_models(
     include_kernel: bool = True,
     include_bayesian: bool = True,
 ) -> Dict[str, Dict[str, Any]]:
-    """Train Part 1 OLS/Ridge, Kernel Ridge, and optional sklearn baselines."""
-    X_train, y_train = _validate_xy(X_train, y_train, "train")
-    X_test, y_test = _validate_xy(X_test, y_test, "test")
+    # ép kiểu chắc chắn ma trận dạng list
+    X_train_list = _to_list(X_train)
+    y_train_list = _to_list(y_train)
+    X_test_list = _to_list(X_test)
+    y_test_list = _to_list(y_test)
+
     results: Dict[str, Dict[str, Any]] = {}
 
-    custom_ols_func = custom_ols_func or PART1_OLS_FIT
-    custom_ridge_func = custom_ridge_func or PART1_RIDGE_FIT
+    custom_ols_func = custom_ols_func or ols_fit
+    custom_ridge_func = custom_ridge_func or ridge_fit
 
     if custom_ols_func is not None:
-        ols = _fit_custom_ols(X_train, y_train, X_test, custom_ols_func)
+        ols = _fit_custom_ols(X_train_list, y_train_list, X_test_list, custom_ols_func)
         results["OLS"] = _make_result(
             model=ols["model"],
-            y_train=y_train,
-            y_test=y_test,
+            y_train=y_train_list,
+            y_test=y_test_list,
             predictions_train=ols["predictions_train"],
             predictions_test=ols["predictions_test"],
             coefficients=ols["coefficients"],
             source="part1",
         )
     else:
-        ols_model, y_train_pred, y_test_pred = _fit_sklearn_model(
-            LinearRegression(), X_train, y_train, X_test
-        )
-        results["OLS"] = _make_result(
-            model=ols_model,
-            y_train=y_train,
-            y_test=y_test,
-            predictions_train=y_train_pred,
-            predictions_test=y_test_pred,
-            coefficients=_coef_with_intercept(ols_model),
-            best_params={
-                "fallback_reason": f"Part 1 OLS unavailable: {PART1_OLS_IMPORT_ERROR}"
-            },
-            source="sklearn_fallback",
-        )
+        raise ImportError("Không tìm thấy hàm ols_fit từ Part 1!")
 
+    # LUỒNG RIDGE: TRUYỀN LIST VÀO
     if include_ridge:
         ridge_best_params, ridge_best_rmse, ridge_cv_results = hyperparameter_tuning(
-            X_train, y_train, param_grid=ridge_param_grid, k=k
+            X_train_list, y_train_list, param_grid=ridge_param_grid, k=k
         )
         ridge_alpha = ridge_best_params["lambda"]
 
@@ -240,16 +231,16 @@ def train_models(
 
         if custom_ridge_func is not None:
             ridge = _fit_custom_ridge(
-                X_train,
-                y_train,
-                X_test,
+                X_train_list,
+                y_train_list,
+                X_test_list,
                 custom_ridge_func,
                 lam=ridge_alpha,
             )
             results["Ridge"] = _make_result(
                 model=ridge["model"],
-                y_train=y_train,
-                y_test=y_test,
+                y_train=y_train_list,
+                y_test=y_test_list,
                 predictions_train=ridge["predictions_train"],
                 predictions_test=ridge["predictions_test"],
                 coefficients=ridge["coefficients"],
@@ -257,21 +248,8 @@ def train_models(
                 source="part1",
             )
         else:
-            ridge_model, y_train_pred, y_test_pred = _fit_sklearn_model(
-                Ridge(alpha=ridge_alpha), X_train, y_train, X_test
-            )
-            results["Ridge"] = _make_result(
-                model=ridge_model,
-                y_train=y_train,
-                y_test=y_test,
-                predictions_train=y_train_pred,
-                predictions_test=y_test_pred,
-                coefficients=_coef_with_intercept(ridge_model),
-                best_params={
-                    **ridge_handover_params,
-                    "fallback_reason": f"Part 1 Ridge unavailable: {PART1_RIDGE_IMPORT_ERROR}",
-                },
-                source="sklearn_fallback",
+            raise ImportError(
+                "Không tìm thấy hàm ridge_fit từ Part 1! Hủy bỏ fallback Sklearn."
             )
 
         results["Ridge"]["best_lambda"] = ridge_alpha
