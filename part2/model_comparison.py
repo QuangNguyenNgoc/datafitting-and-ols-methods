@@ -213,21 +213,12 @@ def train_models(
         )
 
     if include_ridge:
-        ridge_param_grid = ridge_param_grid or {"alpha": np.logspace(-3, 5, 17)}
         ridge_best_params, ridge_best_rmse, ridge_cv_results = hyperparameter_tuning(
-            X_train,
-            y_train,
-            Ridge,
-            ridge_param_grid,
-            k=k,
-            random_state=random_state,
-            return_cv_results=True,
-            custom_ridge_func=custom_ridge_func,
+            X_train, y_train, param_grid=ridge_param_grid, k=k
         )
-        ridge_alpha = float(ridge_best_params.get("alpha", 1.0))
-        ridge_cv_scores = cv_scores_from_results(ridge_cv_results, param_name="alpha")
+        ridge_alpha = ridge_best_params["lambda"]
+
         ridge_handover_params = {
-            **ridge_best_params,
             "lambda": ridge_alpha,
             "cv_rmse": ridge_best_rmse,
         }
@@ -269,7 +260,6 @@ def train_models(
             )
 
         results["Ridge"]["best_lambda"] = ridge_alpha
-        results["Ridge"]["cv_scores"] = ridge_cv_scores
         results["Ridge"]["cv_results"] = ridge_cv_results
 
     if include_kernel:
