@@ -519,29 +519,6 @@ def evaluate_gauss_markov_assumptions(
     }
 
 
-def cv_scores_from_results(
-    cv_results: pd.DataFrame,
-    param_name: str = "alpha",
-) -> dict:
-    """Convert GridSearchCV rows to the cv_scores contract used for handover."""
-    param_column = f"param_{param_name}"
-    if param_column not in cv_results.columns:
-        raise ValueError(f"Missing column in cv_results: {param_column}")
-
-    lambda_values = cv_results[param_column].astype(float).to_numpy()
-    mean_scores = (-cv_results["mean_test_score"].astype(float)).to_numpy()
-    std_scores = cv_results["std_test_score"].astype(float).to_numpy()
-    best_idx = int(np.argmin(mean_scores))
-
-    return {
-        "lambda_values": lambda_values.tolist(),
-        "mean_scores": mean_scores.tolist(),
-        "std_scores": std_scores.tolist(),
-        "best_lambda": float(lambda_values[best_idx]),
-        "best_cv_rmse": float(mean_scores[best_idx]),
-    }
-
-
 def comparison_table(results: dict) -> pd.DataFrame:
     """Create a sorted performance table from ``train_models`` results."""
     rows = []
