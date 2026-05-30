@@ -19,9 +19,6 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 from sklearn.base import clone
-from sklearn.linear_model import LinearRegression, Ridge
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-from sklearn.model_selection import GridSearchCV, KFold
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -32,17 +29,8 @@ try:
 except Exception:  # pragma: no cover - supports direct script execution.
     from advanced_methods import BayesianLinearRegression, kernel_ridge_fit
 
-try:
-    from part1.ols_implementation import coef_inference as PART1_COEF_INFERENCE
-    from part1.ols_implementation import ols_fit as PART1_OLS_FIT
-    from part1.ols_implementation import vif as PART1_VIF
-except Exception as exc:  # pragma: no cover - fallback depends on runtime path.
-    PART1_COEF_INFERENCE = None
-    PART1_OLS_FIT = None
-    PART1_VIF = None
-    PART1_OLS_IMPORT_ERROR = exc
-else:
-    PART1_OLS_IMPORT_ERROR = None
+from part1.ols_implementation import ols_fit, coef_inference, vif, model_metrics
+from part1.cross_validation import kfold_cv
 
 try:
     from part1.ridge_lasso import ridge_fit as PART1_RIDGE_FIT
@@ -52,68 +40,38 @@ except Exception as exc:  # pragma: no cover - fallback depends on runtime path.
 else:
     PART1_RIDGE_IMPORT_ERROR = None
 
-try:
-    from part1.cross_validation import kfold_cv as PART1_KFOLD_CV
-except Exception as exc:  # pragma: no cover - fallback depends on runtime path.
-    PART1_KFOLD_CV = None
-    PART1_KFOLD_IMPORT_ERROR = exc
-else:
-    PART1_KFOLD_IMPORT_ERROR = None
+import math
 
 
-def _as_2d_array(X: np.ndarray) -> np.ndarray:
-    X_arr = np.asarray(X, dtype=float)
-    if X_arr.ndim == 1:
-        X_arr = X_arr.reshape(-1, 1)
-    return X_arr
+def _add_intercept(X: list) -> list:
+    """Thêm cột Bias (toàn số 1.0) vào ma trận X bằng List thuần."""
+    return [[1.0] + list(row) for row in X]
 
 
-def _as_1d_array(y: np.ndarray) -> np.ndarray:
-    return np.asarray(y, dtype=float).reshape(-1)
-
-
-def _add_intercept(X: np.ndarray) -> np.ndarray:
-    X_arr = _as_2d_array(X)
-    return np.column_stack([np.ones(X_arr.shape[0]), X_arr])
-
-
-def _validate_xy(X: np.ndarray, y: np.ndarray, name: str) -> tuple[np.ndarray, np.ndarray]:
-    X_arr = _as_2d_array(X)
-    y_arr = _as_1d_array(y)
-
-    if X_arr.shape[0] != y_arr.shape[0]:
-        raise ValueError(f"{name}: X and y must have the same number of rows.")
-    if not np.isfinite(X_arr).all():
-        raise ValueError(f"{name}: X contains NaN or infinite values.")
-    if not np.isfinite(y_arr).all():
-        raise ValueError(f"{name}: y contains NaN or infinite values.")
-
-    return X_arr, y_arr
-
-
-def _coef_with_intercept(model: Any) -> np.ndarray | None:
-    if not hasattr(model, "coef_"):
-        return None
-
-    coef = np.asarray(model.coef_, dtype=float).reshape(-1)
-    intercept = float(np.asarray(getattr(model, "intercept_", 0.0)).reshape(-1)[0])
-    return np.concatenate([[intercept], coef])
-
-
-def compute_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict:
+def compute_metrics(y_true: list, y_pred: list) -> dict:
     """
-    Compute standard regression metrics used across all models.
+    Tận dụng hàm model_metrics từ Part 1 để tính R2 và RMSE.
     """
-    y_true = _as_1d_array(y_true)
-    y_pred = _as_1d_array(y_pred)
+    n = len(y_true)
+    if n != len(y_pred):
+        raise ValueError("y_true và y_pred phải có cùng độ dài.")
 
-    if y_true.shape[0] != y_pred.shape[0]:
-        raise ValueError("y_true and y_pred must have the same length.")
+    # 1. Gọi hàm Part 1 (Truyền tạm p=1 vì ở đây ta chỉ lấy R2 và RSS, không lấy Adj_R2)
+    p1_metrics = model_metrics(y_true, y_pred, p=1)
+    r2 = p1_metrics["R2"]
+    rss = p1_metrics["RSS"]
+
+    # 2. Tính RMSE từ RSS
+    rmse = math.sqrt(rss / n) if n > 0 else 0.0
+
+    # 3. Tính MAE bằng vòng lặp thuần
+    sum_abs_err = sum(abs(yt - yp) for yt, yp in zip(y_true, y_pred))
+    mae = sum_abs_err / n if n > 0 else 0.0
 
     return {
-        "MAE": float(mean_absolute_error(y_true, y_pred)),
-        "RMSE": float(np.sqrt(mean_squared_error(y_true, y_pred))),
-        "R2": float(r2_score(y_true, y_pred)),
+        "MAE": float(mae),
+        "RMSE": float(rmse),
+        "R2": float(r2),
     }
 
 
@@ -133,9 +91,9 @@ def _make_result(
     result = {
         "model": model,
         "coefficients": coefficients,
-        "feature_coefficients": None
-        if coefficients is None
-        else np.asarray(coefficients).reshape(-1)[1:],
+        "feature_coefficients": (
+            None if coefficients is None else np.asarray(coefficients).reshape(-1)[1:]
+        ),
         "predictions_train": _as_1d_array(predictions_train),
         "predictions_test": _as_1d_array(predictions_test),
         "predictions": _as_1d_array(predictions_test),
@@ -176,7 +134,9 @@ def _fit_custom_ridge(
 ) -> dict:
     X_train_design = _add_intercept(X_train)
     X_test_design = _add_intercept(X_test)
-    beta = np.asarray(custom_ridge_func(X_train_design, y_train, lam), dtype=float).reshape(-1)
+    beta = np.asarray(
+        custom_ridge_func(X_train_design, y_train, lam), dtype=float
+    ).reshape(-1)
 
     return {
         "model": {
@@ -190,14 +150,18 @@ def _fit_custom_ridge(
     }
 
 
-def _fit_sklearn_model(model: Any, X_train, y_train, X_test) -> tuple[Any, np.ndarray, np.ndarray]:
+def _fit_sklearn_model(
+    model: Any, X_train, y_train, X_test
+) -> tuple[Any, np.ndarray, np.ndarray]:
     fitted_model = clone(model)
     fitted_model.fit(X_train, y_train)
     return fitted_model, fitted_model.predict(X_train), fitted_model.predict(X_test)
 
 
 def _rmse(y_true: np.ndarray, y_pred: np.ndarray) -> float:
-    return float(np.sqrt(mean_squared_error(_as_1d_array(y_true), _as_1d_array(y_pred))))
+    return float(
+        np.sqrt(mean_squared_error(_as_1d_array(y_true), _as_1d_array(y_pred)))
+    )
 
 
 def _ridge_cv_with_part1(
@@ -213,6 +177,7 @@ def _ridge_cv_with_part1(
 
     for lam in np.asarray(lambda_values, dtype=float).reshape(-1):
         if custom_ridge_func is not None:
+
             def fit_func(X_fold, y_fold, lam=lam):
                 return np.asarray(
                     custom_ridge_func(_add_intercept(X_fold), y_fold, lam),
@@ -220,10 +185,13 @@ def _ridge_cv_with_part1(
                 ).reshape(-1)
 
             def predict_func(beta, X_valid):
-                return _add_intercept(X_valid) @ np.asarray(beta, dtype=float).reshape(-1)
+                return _add_intercept(X_valid) @ np.asarray(beta, dtype=float).reshape(
+                    -1
+                )
 
             cv_source = "part2.KFold+part1.ridge_fit"
         else:
+
             def fit_func(X_fold, y_fold, lam=lam):
                 model = Ridge(alpha=lam)
                 model.fit(X_fold, y_fold)
@@ -234,11 +202,17 @@ def _ridge_cv_with_part1(
 
             cv_source = "part2.KFold+sklearn_ridge"
 
-        cv = KFold(n_splits=min(int(k), X_train.shape[0]), shuffle=True, random_state=random_state)
+        cv = KFold(
+            n_splits=min(int(k), X_train.shape[0]),
+            shuffle=True,
+            random_state=random_state,
+        )
         fold_scores = []
         for train_idx, valid_idx in cv.split(X_train):
             model = fit_func(X_train[train_idx], y_train[train_idx])
-            fold_scores.append(_rmse(y_train[valid_idx], predict_func(model, X_train[valid_idx])))
+            fold_scores.append(
+                _rmse(y_train[valid_idx], predict_func(model, X_train[valid_idx]))
+            )
         mean_rmse = float(np.mean(fold_scores))
         std_rmse = float(np.std(fold_scores, ddof=1)) if len(fold_scores) > 1 else 0.0
 
@@ -308,7 +282,9 @@ def train_models(
             predictions_train=y_train_pred,
             predictions_test=y_test_pred,
             coefficients=_coef_with_intercept(ols_model),
-            best_params={"fallback_reason": f"Part 1 OLS unavailable: {PART1_OLS_IMPORT_ERROR}"},
+            best_params={
+                "fallback_reason": f"Part 1 OLS unavailable: {PART1_OLS_IMPORT_ERROR}"
+            },
             source="sklearn_fallback",
         )
 
@@ -494,7 +470,9 @@ def _vif_table(X: np.ndarray, feature_names: list[str] | None = None) -> pd.Data
             if "Feature" in vif_df.columns and len(vif_df) == len(names):
                 vif_df["Feature"] = names
             if "VIF_Score" in vif_df.columns:
-                return vif_df.sort_values("VIF_Score", ascending=False).reset_index(drop=True)
+                return vif_df.sort_values("VIF_Score", ascending=False).reset_index(
+                    drop=True
+                )
         except Exception:
             pass
 
@@ -516,7 +494,11 @@ def _vif_table(X: np.ndarray, feature_names: list[str] | None = None) -> pd.Data
 
         rows.append({"Feature": name, "VIF_Score": float(vif_value)})
 
-    return pd.DataFrame(rows).sort_values("VIF_Score", ascending=False).reset_index(drop=True)
+    return (
+        pd.DataFrame(rows)
+        .sort_values("VIF_Score", ascending=False)
+        .reset_index(drop=True)
+    )
 
 
 def run_diagnostics(
@@ -683,7 +665,9 @@ def plot_predictions(
         min_value = min(min_value, y_pred.min())
         max_value = max(max_value, y_pred.max())
         ax.scatter(y_test, y_pred, alpha=0.35, s=18)
-        ax.plot([min_value, max_value], [min_value, max_value], color="red", linestyle="--")
+        ax.plot(
+            [min_value, max_value], [min_value, max_value], color="red", linestyle="--"
+        )
         ax.set_title(model_name)
         ax.set_xlabel("Actual")
         ax.set_ylabel("Predicted")
