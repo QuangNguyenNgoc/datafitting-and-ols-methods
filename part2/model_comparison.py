@@ -17,8 +17,6 @@ from typing import Any, Callable, Dict
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from scipy import stats
-from sklearn.base import clone
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -164,14 +162,6 @@ def _fit_custom_ridge(
         "predictions_train": y_train_pred,
         "predictions_test": y_test_pred,
     }
-
-
-def _fit_sklearn_model(
-    model: Any, X_train, y_train, X_test
-) -> tuple[Any, np.ndarray, np.ndarray]:
-    fitted_model = clone(model)
-    fitted_model.fit(X_train, y_train)
-    return fitted_model, fitted_model.predict(X_train), fitted_model.predict(X_test)
 
 
 def train_models(
