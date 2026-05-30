@@ -466,12 +466,12 @@ def comparison_table(results: dict) -> pd.DataFrame:
 
 
 def plot_predictions(
-    y_test: np.ndarray,
+    y_test,
     results: dict,
     title: str = "Model Predictions Comparison",
 ):
     """Plot actual vs predicted values for each model."""
-    y_test = _as_1d_array(y_test)
+    y_test_list = _to_list(y_test)
     n_models = max(len(results), 1)
     fig, axes = plt.subplots(1, n_models, figsize=(5 * n_models, 4), squeeze=False)
     axes = axes.ravel()
@@ -480,9 +480,9 @@ def plot_predictions(
     max_value = y_test.max()
 
     for ax, (model_name, result) in zip(axes, results.items()):
-        y_pred = _as_1d_array(result["predictions_test"])
-        min_value = min(min_value, y_pred.min())
-        max_value = max(max_value, y_pred.max())
+        y_pred = _to_list(result["predictions_test"])
+        min_value = min(min_value, min(y_pred))
+        max_value = max(max_value, max(y_pred))
         ax.scatter(y_test, y_pred, alpha=0.35, s=18)
         ax.plot(
             [min_value, max_value], [min_value, max_value], color="red", linestyle="--"
