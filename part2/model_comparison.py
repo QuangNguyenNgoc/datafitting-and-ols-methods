@@ -616,57 +616,77 @@ def plot_coefficients(results: dict, feature_names: list, top_n: int = 20):
 
 
 def hyperparameter_tuning(
-    X_train: np.ndarray,
-    y_train: np.ndarray,
-    model_class: Callable,
-    param_grid: dict,
-    k: int = 5,
-    random_state: int = 42,
-    return_cv_results: bool = False,
-    custom_ridge_func: Callable | None = None,
+    X_train: list, y_train: list, param_grid: dict, k: int = 5
 ) -> tuple:
-    """Tune a sklearn-compatible estimator with K-fold CV and RMSE scoring."""
-    X_train, y_train = _validate_xy(X_train, y_train, "hyperparameter_tuning")
+    """
+    Thuật toán GridSearch thuần Python bằng K-Fold CV.
+    Duyệt qua các giá trị Lambda để tìm ra cấu hình có RMSE thấp nhất.
+    Thay thế hoàn toàn GridSearchCV và KFold của sklearn.
+    """
+    # 1. Trích xuất danh sách các Lambda cần thử nghiệm
+    # (Hỗ trợ ép kiểu về list nếu người dùng vô tình truyền NumPy Array)
+    lambda_values = param_grid.get("alpha", param_grid.get("lambda", [1.0]))
+    if hasattr(lambda_values, "tolist"):
+        lambda_values = lambda_values.tolist()
 
-    if model_class is Ridge and "alpha" in param_grid:
-        best_params, best_score, cv_results = _ridge_cv_with_part1(
-            X_train,
-            y_train,
-            lambda_values=param_grid["alpha"],
-            custom_ridge_func=custom_ridge_func,
-            k=k,
-            random_state=random_state,
-        )
-        if return_cv_results:
-            return best_params, best_score, cv_results
-        return best_params, best_score
+    n = len(X_train)
+    if k < 2 or k > n:
+        raise ValueError("Số lượng fold (k) phải >= 2 và <= số lượng mẫu.")
 
-    if isinstance(model_class, type):
-        estimator = model_class()
-    else:
-        estimator = clone(model_class)
+    fold_size = n // k
 
-    n_splits = min(int(k), X_train.shape[0])
-    if n_splits < 2:
-        raise ValueError("k must be at least 2 and no larger than the number of rows.")
+    best_lam = None
+    best_rmse = float("inf")
+    cv_results = []
 
-    cv = KFold(n_splits=n_splits, shuffle=True, random_state=random_state)
-    grid = GridSearchCV(
-        estimator=estimator,
-        param_grid=param_grid,
-        scoring="neg_root_mean_squared_error",
-        cv=cv,
-    )
-    grid.fit(X_train, y_train)
+    # 2. VÒNG LẶP GRID SEARCH: Duyệt qua từng siêu tham số
+    for lam in lambda_values:
+        mse_scores = []
 
-    best_params = dict(grid.best_params_)
-    best_score = float(-grid.best_score_)
+        # 3. VÒNG LẶP K-FOLD: Chia cắt dữ liệu thuần Python
+        for i in range(k):
+            val_start = i * fold_size
+            val_end = n if i == k - 1 else (i + 1) * fold_size
 
-    if return_cv_results:
-        cv_results = pd.DataFrame(grid.cv_results_)
-        return best_params, best_score, cv_results
+            # Tách tập Validation
+            X_val = X_train[val_start:val_end]
+            y_val = y_train[val_start:val_end]
 
-    return best_params, best_score
+            # Tách tập Train (Bằng cách nối List phần đầu và phần đuôi)
+            X_tr = X_train[:val_start] + X_train[val_end:]
+            y_tr = y_train[:val_start] + y_train[val_end:]
+
+            # Tiền xử lý: Chèn cột Bias (Intercept)
+            X_tr_design = _add_intercept(X_tr)
+            X_val_design = _add_intercept(X_val)
+
+            # 4. GỌI THUẬT TOÁN LÕI TỪ PART 1
+            if PART1_RIDGE_FIT is None:
+                raise ImportError("Không tìm thấy hàm ridge_fit từ Part 1.")
+            beta_hat = PART1_RIDGE_FIT(X_tr_design, y_tr, lam)
+
+            # Dự đoán trên tập Validation
+            y_pred = [
+                sum(x_ij * b_j for x_ij, b_j in zip(row, beta_hat))
+                for row in X_val_design
+            ]
+
+            # Tính MSE của fold này
+            mse = sum((y_v - y_p) ** 2 for y_v, y_p in zip(y_val, y_pred)) / len(y_val)
+            mse_scores.append(mse)
+
+        # Tính trung bình RMSE cho giá trị lambda hiện tại
+        mean_rmse = math.sqrt(sum(mse_scores) / k)
+        cv_results.append({"lambda": float(lam), "cv_rmse": float(mean_rmse)})
+
+        # 5. Cập nhật Kỷ lục (Best Params)
+        if mean_rmse < best_rmse:
+            best_rmse = mean_rmse
+            best_lam = float(lam)
+
+    # Đóng gói kết quả (giữ key 'alpha' để tương thích ngược với luồng code cũ)
+    best_params = {"alpha": best_lam, "lambda": best_lam}
+    return best_params, float(best_rmse), cv_results
 
 
 if __name__ == "__main__":
