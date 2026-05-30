@@ -84,11 +84,11 @@ def _to_list(data) -> list:
 
 def _make_result(
     model: Any,
-    y_train: np.ndarray,
-    y_test: np.ndarray,
-    predictions_train: np.ndarray,
-    predictions_test: np.ndarray,
-    coefficients: np.ndarray | None = None,
+    y_train: list,
+    y_test: list,
+    predictions_train: list,
+    predictions_test: list,
+    coefficients: list | None = None,
     best_params: dict | None = None,
     source: str = "",
 ) -> dict:
@@ -98,12 +98,10 @@ def _make_result(
     result = {
         "model": model,
         "coefficients": coefficients,
-        "feature_coefficients": (
-            None if coefficients is None else np.asarray(coefficients).reshape(-1)[1:]
-        ),
-        "predictions_train": _as_1d_array(predictions_train),
-        "predictions_test": _as_1d_array(predictions_test),
-        "predictions": _as_1d_array(predictions_test),
+        "feature_coefficients": coefficients[1:] if coefficients else None,
+        "predictions_train": predictions_train,
+        "predictions_test": predictions_test,
+        "predictions": predictions_test,
         "metrics": metrics,
         "train_metrics": train_metrics,
         "train_score": train_metrics["R2"],
