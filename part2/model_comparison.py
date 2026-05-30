@@ -329,138 +329,111 @@ def _train_bayesian_linear(
     )
 
 
-def _vif_table(X: np.ndarray, feature_names: list[str] | None = None) -> pd.DataFrame:
-    X = _as_2d_array(X)
-    names = feature_names or [f"x{i}" for i in range(X.shape[1])]
+def _vif_table(X_list: list, feature_names: list | None = None) -> pd.DataFrame:
+    X_list = _to_list(X_list)
+    names = feature_names or [f"x{i}" for i in range(len(X_list[0]))]
 
-    if PART1_VIF is not None:
-        try:
-            vif_df = PART1_VIF(X).copy()
-            if "Feature" in vif_df.columns and len(vif_df) == len(names):
-                vif_df["Feature"] = names
-            if "VIF_Score" in vif_df.columns:
-                return vif_df.sort_values("VIF_Score", ascending=False).reset_index(
-                    drop=True
-                )
-        except Exception:
-            pass
+    vif_scores = vif(X_list)
 
-    rows = []
-
-    for idx, name in enumerate(names):
-        target = X[:, idx]
-        if np.std(target) < 1e-12:
-            vif_value = np.inf
-        else:
-            others = np.delete(X, idx, axis=1)
-            if others.shape[1] == 0:
-                vif_value = 1.0
-            else:
-                aux_model = LinearRegression()
-                aux_model.fit(others, target)
-                r2 = aux_model.score(others, target)
-                vif_value = np.inf if r2 >= 1.0 else 1.0 / max(1.0 - r2, 1e-12)
-
-        rows.append({"Feature": name, "VIF_Score": float(vif_value)})
-
-    return (
-        pd.DataFrame(rows)
-        .sort_values("VIF_Score", ascending=False)
-        .reset_index(drop=True)
-    )
+    df = pd.DataFrame({"Feature": names, "VIF_Score": vif_scores})
+    return df.sort_values("VIF_Score", ascending=False).reset_index(drop=True)
 
 
 def run_diagnostics(
-    X: np.ndarray,
-    y: np.ndarray,
-    feature_names: list[str] | None = None,
+    X: list,
+    y: list,
+    feature_names: list | None = None,
 ) -> dict:
-    """
-    Run the Member B Phase 1 diagnostics before final model selection.
+    X_list = _to_list(X)
+    y_list = _to_list(y)
+    names = feature_names or [f"x{i}" for i in range(len(X_list[0]))]
+    X_design = _add_intercept(X_list)
 
-    This returns VIF for multicollinearity plus coefficient inference from the
-    Part 1 implementation when available. It is intended as the selection gate
-    artifact that Member C can review before deciding whether to drop features.
-    """
-    X, y = _validate_xy(X, y, "run_diagnostics")
-    names = feature_names or [f"x{i}" for i in range(X.shape[1])]
-    X_design = _add_intercept(X)
+    # Tính Beta bằng hàm tự code
+    beta = ols_fit(X_design, y_list)
 
-    if PART1_OLS_FIT is not None:
-        beta = np.asarray(PART1_OLS_FIT(X_design, y), dtype=float).reshape(-1)
-    else:
-        model = LinearRegression(fit_intercept=False)
-        model.fit(X_design, y)
-        beta = np.asarray(model.coef_, dtype=float).reshape(-1)
+    # Tính Dự đoán & Phần dư bằng List Comprehension
+    fitted = [sum(x_val * b for x_val, b in zip(row, beta)) for row in X_design]
+    residuals = [y_i - y_hat_i for y_i, y_hat_i in zip(y_list, fitted)]
 
-    fitted = X_design @ beta
-    residuals = y - fitted
-    rss = float(np.sum(residuals**2))
-    dof = max(X_design.shape[0] - X_design.shape[1], 1)
+    # Tính Phương sai sai số (sigma2)
+    rss = sum(r**2 for r in residuals)
+    dof = max(len(X_design) - len(X_design[0]), 1)
     sigma2 = rss / dof
 
-    inference_df = None
-    if PART1_COEF_INFERENCE is not None:
-        try:
-            inference_df = PART1_COEF_INFERENCE(X_design, y, beta, sigma2).copy()
-            expected_names = ["Intercept", *names]
-            if len(inference_df) == len(expected_names):
-                inference_df.insert(0, "Feature", expected_names)
-        except Exception:
-            inference_df = None
+    # Bảng suy diễn thống kê (T-test)
+    inference_df = coef_inference(X_design, y_list, beta, sigma2).copy()
+    expected_names = ["Intercept"] + names
+    if len(inference_df) == len(expected_names):
+        inference_df.insert(0, "Feature", expected_names)
 
     return {
         "coefficients": beta,
         "predictions_train": fitted,
         "residuals_train": residuals,
         "sigma2": float(sigma2),
-        "VIF": _vif_table(X, feature_names=names),
+        "VIF": _vif_table(X_list, feature_names=names),
         "coef_inference": inference_df,
     }
 
 
 def evaluate_gauss_markov_assumptions(
-    X: np.ndarray,
-    y: np.ndarray,
-    residuals: np.ndarray,
-    feature_names: list[str] | None = None,
+    X: list,
+    residuals: list,
+    feature_names: list | None = None,
 ) -> dict:
-    """Evaluate lightweight OLS diagnostics for the real dataset."""
-    X, y = _validate_xy(X, y, "diagnostics")
-    residuals = _as_1d_array(residuals)
+    """Tự lập trình kiểm định Jarque-Bera và Breusch-Pagan thuần Toán học."""
+    X_list = _to_list(X)
+    res_list = _to_list(residuals)
+    n = len(res_list)
 
-    if residuals.shape[0] != y.shape[0]:
-        raise ValueError("residuals must have the same length as y.")
+    # 1. Tự code Jarque-Bera (Kiểm định phân phối chuẩn)
+    mean_res = sum(res_list) / n
+    m2 = sum((r - mean_res) ** 2 for r in res_list) / n
+    m3 = sum((r - mean_res) ** 3 for r in res_list) / n
+    m4 = sum((r - mean_res) ** 4 for r in res_list) / n
 
-    squared_residuals = residuals**2
-    X_aux = _add_intercept(X)
-    aux_model = LinearRegression(fit_intercept=False)
-    aux_model.fit(X_aux, squared_residuals)
-    aux_pred = aux_model.predict(X_aux)
-    bp_r2 = max(r2_score(squared_residuals, aux_pred), 0.0)
-    bp_stat = X.shape[0] * bp_r2
-    bp_p_value = stats.chi2.sf(bp_stat, df=X.shape[1])
+    skewness = m3 / (m2 ** (1.5)) if m2 > 0 else 0
+    kurtosis = m4 / (m2**2) if m2 > 0 else 3
+    jb_stat = (n / 6) * (skewness**2 + 0.25 * (kurtosis - 3) ** 2)
 
-    jb_stat, jb_p_value = stats.jarque_bera(residuals)
+    # 2. Tự code Breusch-Pagan bằng hàm OLS Part 1 (Kiểm định phương sai sai số không đổi)
+    squared_res = [r**2 for r in res_list]
+    X_aux = _add_intercept(X_list)
+
+    # Hồi quy bình phương phần dư theo X (Mô hình phụ)
+    beta_aux = ols_fit(X_aux, squared_res)
+    pred_aux = [sum(x_val * b for x_val, b in zip(row, beta_aux)) for row in X_aux]
+
+    # Tính R2 của mô hình phụ
+    mean_sq_res = sum(squared_res) / n
+    tss_aux = sum((r2 - mean_sq_res) ** 2 for r2 in squared_res)
+    rss_aux = sum((r2 - p2) ** 2 for r2, p2 in zip(squared_res, pred_aux))
+    bp_r2 = 1.0 - (rss_aux / tss_aux) if tss_aux > 0 else 0.0
+    bp_stat = n * bp_r2
+
+    # NOTE: chỉ dùng dể soi bảng thống kê
+    try:
+        import scipy.stats as st
+
+        bp_p_value = float(st.chi2.sf(bp_stat, df=len(X_list[0])))
+        jb_p_value = float(st.chi2.sf(jb_stat, df=2))
+    except ImportError:
+        bp_p_value = None
+        jb_p_value = None
 
     return {
-        "residual_summary": {
-            "mean": float(np.mean(residuals)),
-            "std": float(np.std(residuals, ddof=1)),
-            "min": float(np.min(residuals)),
-            "max": float(np.max(residuals)),
-        },
         "normality": {
-            "test": "Jarque-Bera",
+            "test": "Jarque-Bera (Custom Math)",
             "statistic": float(jb_stat),
-            "p_value": float(jb_p_value),
+            "p_value": jb_p_value,
         },
         "breusch_pagan": {
             "lm_statistic": float(bp_stat),
-            "p_value": float(bp_p_value),
-            "df": int(X.shape[1]),
+            "p_value": bp_p_value,
+            "df": len(X_list[0]),
         },
-        "VIF": _vif_table(X, feature_names=feature_names),
+        "VIF": _vif_table(X_list, feature_names=feature_names),
     }
 
 
