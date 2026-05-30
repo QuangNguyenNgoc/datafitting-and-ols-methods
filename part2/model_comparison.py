@@ -181,13 +181,13 @@ def train_models(
     y_test,
     custom_ols_func: Callable | None = None,
     custom_ridge_func: Callable | None = None,
-    sklearn_models: dict | None = None,
     ridge_param_grid: dict | None = None,
     kernel_params: dict | None = None,
     bayesian_params: dict | None = None,
     k: int = 5,
     random_state: int = 42,
     kernel_sample_size: int = 1000,
+    include_ols: bool = True,
     include_ridge: bool = True,
     include_kernel: bool = True,
     include_bayesian: bool = True,
@@ -203,7 +203,8 @@ def train_models(
     custom_ols_func = custom_ols_func or ols_fit
     custom_ridge_func = custom_ridge_func or ridge_fit
 
-    if custom_ols_func is not None:
+    # LUỒNG OLS
+    if include_ols:
         ols = _fit_custom_ols(X_train_list, y_train_list, X_test_list, custom_ols_func)
         results["OLS"] = _make_result(
             model=ols["model"],
@@ -214,60 +215,46 @@ def train_models(
             coefficients=ols["coefficients"],
             source="part1",
         )
-    else:
-        raise ImportError("Không tìm thấy hàm ols_fit từ Part 1!")
 
-    # LUỒNG RIDGE: TRUYỀN LIST VÀO
+    # LUỒNG RIDGE
     if include_ridge:
         ridge_best_params, ridge_best_rmse, ridge_cv_results = hyperparameter_tuning(
             X_train_list, y_train_list, param_grid=ridge_param_grid, k=k
         )
         ridge_alpha = ridge_best_params["lambda"]
-
-        ridge_handover_params = {
-            "lambda": ridge_alpha,
-            "cv_rmse": ridge_best_rmse,
-        }
-
-        if custom_ridge_func is not None:
-            ridge = _fit_custom_ridge(
-                X_train_list,
-                y_train_list,
-                X_test_list,
-                custom_ridge_func,
-                lam=ridge_alpha,
-            )
-            results["Ridge"] = _make_result(
-                model=ridge["model"],
-                y_train=y_train_list,
-                y_test=y_test_list,
-                predictions_train=ridge["predictions_train"],
-                predictions_test=ridge["predictions_test"],
-                coefficients=ridge["coefficients"],
-                best_params=ridge_handover_params,
-                source="part1",
-            )
-        else:
-            raise ImportError(
-                "Không tìm thấy hàm ridge_fit từ Part 1! Hủy bỏ fallback Sklearn."
-            )
-
-        results["Ridge"]["best_lambda"] = ridge_alpha
+        ridge = _fit_custom_ridge(
+            X_train_list,
+            y_train_list,
+            X_test_list,
+            custom_ridge_func,
+            lam=ridge_alpha,
+        )
+        results["Ridge"] = _make_result(
+            model=ridge["model"],
+            y_train=y_train_list,
+            y_test=y_test_list,
+            predictions_train=ridge["predictions_train"],
+            predictions_test=ridge["predictions_test"],
+            coefficients=ridge["coefficients"],
+            best_params={"lambda": ridge_alpha, "cv_rmse": ridge_best_rmse},
+            source="part1",
+        )
         results["Ridge"]["cv_results"] = ridge_cv_results
 
+    # LUỒNG KERNEL
     if include_kernel:
         kernel_params = kernel_params or {"alpha": 1.0, "kernel": "rbf", "gamma": 0.1}
-        kernel_result = _train_kernel_ridge(
-            X_train,
-            y_train,
-            X_test,
-            y_test,
+        results["Kernel_Ridge"] = _train_kernel_ridge(
+            X_train_list,
+            y_train_list,
+            X_test_list,
+            y_test_list,
             kernel_params=kernel_params,
             random_state=random_state,
             sample_size=kernel_sample_size,
         )
-        results["Kernel_Ridge"] = kernel_result
 
+    # LUỒNG BAYESIAN
     if include_bayesian:
         bayesian_params = bayesian_params or {
             "prior_precision": 1e-6,
@@ -275,26 +262,11 @@ def train_models(
             "fit_intercept": True,
         }
         results["Bayesian_Linear"] = _train_bayesian_linear(
-            X_train,
-            y_train,
-            X_test,
-            y_test,
+            X_train_list,
+            y_train_list,
+            X_test_list,
+            y_test_list,
             bayesian_params=bayesian_params,
-        )
-
-    for name, model in (sklearn_models or {}).items():
-        fitted, y_train_pred, y_test_pred = _fit_sklearn_model(
-            model, X_train, y_train, X_test
-        )
-        result_name = name if name not in results else f"{name}_extra"
-        results[result_name] = _make_result(
-            model=fitted,
-            y_train=y_train,
-            y_test=y_test,
-            predictions_train=y_train_pred,
-            predictions_test=y_test_pred,
-            coefficients=_coef_with_intercept(fitted),
-            source="sklearn_extra",
         )
 
     return results
