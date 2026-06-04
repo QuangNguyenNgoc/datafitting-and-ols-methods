@@ -17,6 +17,7 @@ from typing import Any, Callable, Dict
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import math
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -24,22 +25,13 @@ if str(PROJECT_ROOT) not in sys.path:
 
 try:
     from part2.advanced_methods import BayesianLinearRegression, kernel_ridge_fit
-except Exception:  # pragma: no cover - supports direct script execution.
+except Exception:
     from advanced_methods import BayesianLinearRegression, kernel_ridge_fit
 
 from part1.ols_implementation import ols_fit, coef_inference, vif, model_metrics
 from part1.ridge_lasso import ridge_fit
 from part1.cross_validation import kfold_cv
-
-try:
-    from part1.ridge_lasso import ridge_fit as PART1_RIDGE_FIT
-except Exception as exc:  # pragma: no cover - fallback depends on runtime path.
-    PART1_RIDGE_FIT = None
-    PART1_RIDGE_IMPORT_ERROR = exc
-else:
-    PART1_RIDGE_IMPORT_ERROR = None
-
-import math
+from part1.ridge_lasso import ridge_fit
 
 
 def _add_intercept(X: list) -> list:
@@ -382,12 +374,12 @@ def evaluate_gauss_markov_assumptions(
     residuals: list,
     feature_names: list | None = None,
 ) -> dict:
-    """Tự lập trình kiểm định Jarque-Bera và Breusch-Pagan thuần Toán học."""
+    """kiểm định Jarque-Bera và Breusch-Pagan"""
     X_list = _to_list(X)
     res_list = _to_list(residuals)
     n = len(res_list)
 
-    # 1. Tự code Jarque-Bera (Kiểm định phân phối chuẩn)
+    # Jarque-Bera
     mean_res = sum(res_list) / n
     m2 = sum((r - mean_res) ** 2 for r in res_list) / n
     m3 = sum((r - mean_res) ** 3 for r in res_list) / n
@@ -397,7 +389,7 @@ def evaluate_gauss_markov_assumptions(
     kurtosis = m4 / (m2**2) if m2 > 0 else 3
     jb_stat = (n / 6) * (skewness**2 + 0.25 * (kurtosis - 3) ** 2)
 
-    # 2. Tự code Breusch-Pagan bằng hàm OLS Part 1 (Kiểm định phương sai sai số không đổi)
+    # Breusch-Pagan
     squared_res = [r**2 for r in res_list]
     X_aux = _add_intercept(X_list)
 
@@ -412,6 +404,8 @@ def evaluate_gauss_markov_assumptions(
     bp_r2 = 1.0 - (rss_aux / tss_aux) if tss_aux > 0 else 0.0
     bp_stat = n * bp_r2
 
+    # ============================================
+    # NOTE: Đang cần phương án "tự code" đoạn này
     # NOTE: chỉ dùng dể soi bảng thống kê
     try:
         import scipy.stats as st
@@ -501,36 +495,43 @@ def plot_coefficients(results: dict, feature_names: list, top_n: int = 20):
     chosen_name = None
     chosen_coefficients = None
 
+    # tìm mô hình đầu tiên có chứa trọng số
     for model_name, result in results.items():
         coefficients = result.get("coefficients")
         if coefficients is not None:
             chosen_name = model_name
-            chosen_coefficients = np.asarray(coefficients, dtype=float).reshape(-1)
+            chosen_coefficients = _to_list(coefficients)
             break
 
     if chosen_coefficients is None:
         raise ValueError("No model in results contains coefficients to plot.")
 
-    chosen_coefficients = _to_list(chosen_coefficients)
+    # bỏ intercept (Bias) nếu có
     if len(chosen_coefficients) == len(feature_names) + 1:
         chosen_coefficients = chosen_coefficients[1:]
 
+    # kiểm tra mảng có khớp không?
     if len(chosen_coefficients) != len(feature_names):
         raise ValueError("Coefficient length does not match feature_names length.")
 
+    # === Xử lí dữ liệu bằng Pandas để sắp xếp top N ===
     coef_df = pd.DataFrame(
         {"feature": feature_names, "coefficient": chosen_coefficients}
     )
     coef_df["abs_coefficient"] = coef_df["coefficient"].abs()
     coef_df = coef_df.sort_values("abs_coefficient", ascending=False).head(top_n)
+
+    # Sắp xếp từ âm sang dương
     coef_df = coef_df.sort_values("coefficient", ascending=True)
 
+    # === Vẽ đồ thị ===
     fig, ax = plt.subplots(figsize=(9, max(4, 0.35 * len(coef_df))))
     ax.barh(coef_df["feature"], coef_df["coefficient"])
     ax.axvline(0, color="black", linewidth=0.8)
     ax.set_title(f"Top coefficients - {chosen_name}")
     ax.set_xlabel("Coefficient")
     fig.tight_layout()
+
     return fig
 
 
@@ -576,9 +577,9 @@ def hyperparameter_tuning(
             X_tr_design = _add_intercept(X_tr)
             X_val_design = _add_intercept(X_val)
 
-            if PART1_RIDGE_FIT is None:
+            if ridge_fit is None:
                 raise ImportError("Không tìm thấy hàm ridge_fit từ Part 1.")
-            beta_hat = PART1_RIDGE_FIT(X_tr_design, y_tr, lam)
+            beta_hat = ridge_fit(X_tr_design, y_tr, lam)
 
             # Dự đoán trên tập Validation
             y_pred = [
