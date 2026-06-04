@@ -576,8 +576,6 @@ def hyperparameter_tuning(
             X_tr_design = _add_intercept(X_tr)
             X_val_design = _add_intercept(X_val)
 
-            if ridge_fit is None:
-                raise ImportError("Không tìm thấy hàm ridge_fit từ Part 1.")
             beta_hat = ridge_fit(X_tr_design, y_tr, lam)
 
             # Dự đoán trên tập Validation
