@@ -40,7 +40,7 @@ pip install -r requirements.txt
 ## Thành viên nhóm
 
 | STT | Họ và Tên | MSSV |
-|-----|-----------|------|
+| --- | --------- | ---- |
 | 1   |           |      |
 | 2   |           |      |
 | 3   |           |      |
