@@ -296,10 +296,10 @@ def _train_kernel_ridge(
 
 
 def _train_bayesian_linear(
-    X_train: np.ndarray,
-    y_train: np.ndarray,
-    X_test: np.ndarray,
-    y_test: np.ndarray,
+    X_train,
+    y_train,
+    X_test,
+    y_test,
     bayesian_params: dict,
 ) -> dict:
     """Train Bayesian Linear Regression from ``advanced_methods.py``."""
@@ -315,7 +315,7 @@ def _train_bayesian_linear(
         y_test=y_test,
         predictions_train=y_train_pred,
         predictions_test=y_test_pred,
-        coefficients=np.asarray(model.posterior_mean, dtype=float),
+        coefficients=_to_list(model.posterior_mean),
         best_params=bayesian_params,
         source="advanced_methods",
     )
@@ -440,11 +440,11 @@ def comparison_table(results: dict) -> pd.DataFrame:
         rows.append(
             {
                 "Model": model_name,
-                "MAE": metrics.get("MAE", np.nan),
-                "RMSE": metrics.get("RMSE", np.nan),
-                "R2": metrics.get("R2", np.nan),
-                "Train_RMSE": train_metrics.get("RMSE", np.nan),
-                "Train_R2": train_metrics.get("R2", np.nan),
+                "MAE": metrics.get("MAE", None),
+                "RMSE": metrics.get("RMSE", None),
+                "R2": metrics.get("R2", None),
+                "Train_RMSE": train_metrics.get("RMSE", None),
+                "Train_R2": train_metrics.get("R2", None),
                 "Source": result.get("source", ""),
                 "Best_Params": result.get("best_params", {}),
             }
@@ -455,7 +455,7 @@ def comparison_table(results: dict) -> pd.DataFrame:
         return table
 
     table = table.sort_values("RMSE", ascending=True).reset_index(drop=True)
-    table.insert(0, "Rank", np.arange(1, len(table) + 1))
+    table.insert(0, "Rank", range(1, len(table) + 1))
     return table
 
 
