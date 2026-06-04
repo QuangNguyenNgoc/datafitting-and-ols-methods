@@ -511,7 +511,8 @@ def plot_coefficients(results: dict, feature_names: list, top_n: int = 20):
     if chosen_coefficients is None:
         raise ValueError("No model in results contains coefficients to plot.")
 
-    if chosen_coefficients.shape[0] == len(feature_names) + 1:
+    chosen_coefficients = _to_list(chosen_coefficients)
+    if len(chosen_coefficients) == len(feature_names) + 1:
         chosen_coefficients = chosen_coefficients[1:]
 
     if chosen_coefficients.shape[0] != len(feature_names):
@@ -537,12 +538,9 @@ def hyperparameter_tuning(
     X_train: list, y_train: list, param_grid: dict, k: int = 5
 ) -> tuple:
     """
-    Thuật toán GridSearch thuần Python bằng K-Fold CV.
     Duyệt qua các giá trị Lambda để tìm ra cấu hình có RMSE thấp nhất.
-    Thay thế hoàn toàn GridSearchCV và KFold của sklearn.
     """
-    # 1. Trích xuất danh sách các Lambda cần thử nghiệm
-    # (Hỗ trợ ép kiểu về list nếu người dùng vô tình truyền NumPy Array)
+    # trích xuất danh sách các Lambda cần thử nghiệm
     lambda_values = param_grid.get("alpha", param_grid.get("lambda", [1.0]))
     if hasattr(lambda_values, "tolist"):
         lambda_values = lambda_values.tolist()
@@ -557,11 +555,11 @@ def hyperparameter_tuning(
     best_rmse = float("inf")
     cv_results = []
 
-    # 2. VÒNG LẶP GRID SEARCH: Duyệt qua từng siêu tham số
+    # duyệt qua từng siêu tham số
     for lam in lambda_values:
         mse_scores = []
 
-        # 3. VÒNG LẶP K-FOLD: Chia cắt dữ liệu thuần Python
+        # k-fold loop
         for i in range(k):
             val_start = i * fold_size
             val_end = n if i == k - 1 else (i + 1) * fold_size
@@ -570,7 +568,7 @@ def hyperparameter_tuning(
             X_val = X_train[val_start:val_end]
             y_val = y_train[val_start:val_end]
 
-            # Tách tập Train (Bằng cách nối List phần đầu và phần đuôi)
+            # Tách tập Train
             X_tr = X_train[:val_start] + X_train[val_end:]
             y_tr = y_train[:val_start] + y_train[val_end:]
 
@@ -578,7 +576,6 @@ def hyperparameter_tuning(
             X_tr_design = _add_intercept(X_tr)
             X_val_design = _add_intercept(X_val)
 
-            # 4. GỌI THUẬT TOÁN LÕI TỪ PART 1
             if PART1_RIDGE_FIT is None:
                 raise ImportError("Không tìm thấy hàm ridge_fit từ Part 1.")
             beta_hat = PART1_RIDGE_FIT(X_tr_design, y_tr, lam)
@@ -589,7 +586,7 @@ def hyperparameter_tuning(
                 for row in X_val_design
             ]
 
-            # Tính MSE của fold này
+            # Tính MSE của fold
             mse = sum((y_v - y_p) ** 2 for y_v, y_p in zip(y_val, y_pred)) / len(y_val)
             mse_scores.append(mse)
 
@@ -597,12 +594,11 @@ def hyperparameter_tuning(
         mean_rmse = math.sqrt(sum(mse_scores) / k)
         cv_results.append({"lambda": float(lam), "cv_rmse": float(mean_rmse)})
 
-        # 5. Cập nhật Kỷ lục (Best Params)
+        # Cập nhật Kỷ lục (Best Params)
         if mean_rmse < best_rmse:
             best_rmse = mean_rmse
             best_lam = float(lam)
 
-    # Đóng gói kết quả (giữ key 'alpha' để tương thích ngược với luồng code cũ)
     best_params = {"alpha": best_lam, "lambda": best_lam}
     return best_params, float(best_rmse), cv_results
 
