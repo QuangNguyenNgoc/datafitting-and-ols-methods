@@ -515,7 +515,7 @@ def plot_coefficients(results: dict, feature_names: list, top_n: int = 20):
     if len(chosen_coefficients) == len(feature_names) + 1:
         chosen_coefficients = chosen_coefficients[1:]
 
-    if chosen_coefficients.shape[0] != len(feature_names):
+    if len(chosen_coefficients) != len(feature_names):
         raise ValueError("Coefficient length does not match feature_names length.")
 
     coef_df = pd.DataFrame(
@@ -601,25 +601,3 @@ def hyperparameter_tuning(
 
     best_params = {"alpha": best_lam, "lambda": best_lam}
     return best_params, float(best_rmse), cv_results
-
-
-if __name__ == "__main__":
-    try:
-        from data_pipeline import DataPipeline, load_data, train_test_split
-    except ImportError:
-        from part2.data_pipeline import DataPipeline, load_data, train_test_split
-
-    df = load_data("part2/data/melb_data.csv")
-    df_train, df_test = train_test_split(df, test_size=0.3, random_state=42)
-    pipeline = DataPipeline(drop_columns=["Bedroom2"])
-    X_train_demo, y_train_demo = pipeline.fit_transform(df_train)
-    X_test_demo, y_test_demo = pipeline.transform(df_test)
-
-    demo_results = train_models(
-        X_train_demo,
-        y_train_demo,
-        X_test_demo,
-        y_test_demo,
-        kernel_sample_size=300,
-    )
-    print(comparison_table(demo_results))
