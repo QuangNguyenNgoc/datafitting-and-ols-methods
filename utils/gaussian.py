@@ -26,7 +26,9 @@ Các nội dung trong file này:
 _NEAR_ZERO_PIVOT_WARNING = "pivot is near zero; the system may be ill-conditioned"
 
 
-def back_substitution(U: Sequence[Sequence[Number]], c: Sequence[Number], eps: float = 1e-12) -> Vector:
+def back_substitution(
+    U: Sequence[Sequence[Number]], c: Sequence[Number], eps: float = 1e-12
+) -> Vector:
     """
     Giải hệ tam giác trên Ux = c.
 
@@ -49,7 +51,9 @@ def back_substitution(U: Sequence[Sequence[Number]], c: Sequence[Number], eps: f
     x = [0.0] * n
     for i in range(n - 1, -1, -1):
         if abs(upper[i][i]) <= eps:
-            raise ValueError("Back substitution failed because a diagonal pivot is zero.")
+            raise ValueError(
+                "Back substitution failed because a diagonal pivot is zero."
+            )
         subtotal = sum(upper[i][j] * x[j] for j in range(i + 1, n))
         x[i] = (rhs[i] - subtotal) / upper[i][i]
 
@@ -205,7 +209,9 @@ def _extract_upper_system(
     rows, cols = _shape(ref_augmented)
 
     if cols != variable_count + 1:
-        raise ValueError("The augmented matrix must have exactly variable_count + 1 columns.")
+        raise ValueError(
+            "The augmented matrix must have exactly variable_count + 1 columns."
+        )
     if rows < variable_count:
         raise ValueError("Not enough rows to extract a square upper-triangular system.")
 

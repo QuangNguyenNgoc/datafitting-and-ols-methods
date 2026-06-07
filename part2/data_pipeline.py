@@ -30,7 +30,6 @@ def train_test_split(
     n_test = int(np.ceil(len(df) * test_size))
     test_idx = indices[:n_test]
     train_idx = indices[n_test:]
-
     df_train = df.iloc[train_idx].reset_index(drop=True)
     df_test = df.iloc[test_idx].reset_index(drop=True)
     return df_train, df_test

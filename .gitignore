@@ -14,7 +14,7 @@ venv/
 env/
 .venv/
 .conda/
-
+docss/
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
 

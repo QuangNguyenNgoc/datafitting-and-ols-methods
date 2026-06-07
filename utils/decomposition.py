@@ -25,6 +25,7 @@ from matrix_utils import Matrix, Number, Vector, mat_mul, mat_transpose
 
 # ──────────────────────────────────────────────
 
+
 def svd_decomp(A: Sequence[Sequence[Number]]) -> Tuple[Matrix, Matrix, Matrix]:
     """
     Phân rã SVD cho ma trận A (m x n): A = U * Sigma * V^T.
@@ -47,7 +48,8 @@ def svd_decomp(A: Sequence[Sequence[Number]]) -> Tuple[Matrix, Matrix, Matrix]:
 
     raw_cols = sorted(
         [(evs[i], get_column(matV, i)) for i in range(n)],
-        key=lambda p: p[0], reverse=True,
+        key=lambda p: p[0],
+        reverse=True,
     )
     ortho_V: List[Vector] = _gram_schmidt([list(p[1]) for p in raw_cols])
     while len(ortho_V) < n:
@@ -82,7 +84,9 @@ def svd_decomp(A: Sequence[Sequence[Number]]) -> Tuple[Matrix, Matrix, Matrix]:
 
     return U, Sigma, V_T
 
+
 # ──────────────────────────────────────────────
+
 
 def verify_svd(
     A: Matrix,
@@ -108,14 +112,18 @@ def verify_svd(
     err_recon = float(np.max(np.abs(arrA - rebuilt)))
     print("* Kiểm chứng SVD")
     print(f"Sai số tái cấu trúc ||A - U*Sigma*V^T||max = {err_recon:.2e}")
-    print("Cài đặt SVD đúng (A ~ U*Sigma*V^T)." if err_recon < 1e-4
-          else "Cài đặt SVD có thể có sai số cao.")
+    print(
+        "Cài đặt SVD đúng (A ~ U*Sigma*V^T)."
+        if err_recon < 1e-4
+        else "Cài đặt SVD có thể có sai số cao."
+    )
 
     np_svs = np.linalg.svd(arrA, compute_uv=False)
     my_svs = np.array([Sigma[i][i] for i in range(min(len(A), len(A[0])))])
     err_sv = float(np.max(np.abs(my_svs - np_svs)))
     print(f"Sai số giá trị kỳ dị so với NumPy = {err_sv:.2e}")
     return err_recon < 1e-4 and err_sv < 1e-4
+
 
 def demo_svd(A: Sequence[Sequence[Number]]) -> None:
     """
@@ -138,14 +146,18 @@ def demo_svd(A: Sequence[Sequence[Number]]) -> None:
         print("  " + " ".join(f"{v:8.4f}" for v in row))
     verify_svd(mat, U, Sigma, V_T)
 
+
 # ──────────────────────────────────────────────
+
 
 def main() -> None:
     try:
         rows_n = int(input("Nhập số dòng m = "))
         cols_n = int(input("Nhập số cột n = "))
-        print(f"Nhập ma trận {rows_n}x{cols_n} (mỗi dòng cách nhau bởi dấu Enter, "
-              "các phần tử cách nhau bởi khoảng trắng):")
+        print(
+            f"Nhập ma trận {rows_n}x{cols_n} (mỗi dòng cách nhau bởi dấu Enter, "
+            "các phần tử cách nhau bởi khoảng trắng):"
+        )
         mat: Matrix = []
         for i in range(rows_n):
             row = list(map(float, input().strip().split()))
@@ -156,6 +168,7 @@ def main() -> None:
         demo_svd(mat)
     except ValueError as e:
         print(f"Lỗi: {e}")
+
 
 if __name__ == "__main__":
     main()

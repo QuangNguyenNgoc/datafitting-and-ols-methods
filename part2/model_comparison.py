@@ -14,7 +14,6 @@ import sys
 from pathlib import Path
 from typing import Any, Callable, Dict
 
-import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 import math
@@ -32,6 +31,17 @@ from part1.ols_implementation import ols_fit, coef_inference, vif, model_metrics
 from part1.ridge_lasso import ridge_fit
 from part1.cross_validation import kfold_cv
 custom_ridge_fit = ridge_fit
+
+
+class DiagnosticsResult(dict):
+    """Dict-like diagnostics result that can also behave like the VIF table."""
+
+    def sort_values(self, *args, **kwargs):
+        vif_table = self["VIF"]
+        by = kwargs.get("by")
+        if by == "VIF" and "VIF" not in vif_table.columns and "VIF_Score" in vif_table.columns:
+            kwargs["by"] = "VIF_Score"
+        return vif_table.sort_values(*args, **kwargs)
 
 
 def _add_intercept(X: list) -> list:
@@ -85,11 +95,12 @@ def _make_result(
 ) -> dict:
     metrics = compute_metrics(y_test, predictions_test)
     train_metrics = compute_metrics(y_train, predictions_train)
+    coefficients_list = _to_list(coefficients) if coefficients is not None else None
 
     result = {
         "model": model,
-        "coefficients": coefficients,
-        "feature_coefficients": coefficients[1:] if coefficients is not None else None,
+        "coefficients": coefficients_list,
+        "feature_coefficients": coefficients_list[1:] if coefficients_list is not None else None,
         "predictions_train": predictions_train,
         "predictions_test": predictions_test,
         "predictions": predictions_test,
@@ -184,9 +195,12 @@ def train_models(
 ) -> Dict[str, Dict[str, Any]]:
     custom_ols_func = custom_ols_func or ols_fit
     custom_ridge_func = custom_ridge_func or ridge_fit
+    kernel_func = custom_kernel_func or kernel_ridge_fit
 
-    if X_train_raw is not None:
-        # Notebook style call
+    results: Dict[str, Dict[str, Any]] = {}
+
+    if X_train_raw is not None or X_train_best is not None:
+        # Kiểu gọi từ Jupyter Notebook: train_models(X_train_raw=..., X_train_best=..., etc.)
         X_train_raw_list = _to_list(X_train_raw)
         X_train_best_list = _to_list(X_train_best)
         y_train_list = _to_list(y_train)
@@ -194,9 +208,7 @@ def train_models(
         X_test_best_list = _to_list(X_test_best)
         y_test_list = _to_list(y_test)
 
-        results = {}
-
-        # 1. OLS Baseline (using raw features)
+        # 1. OLS Baseline (using raw/baseline features)
         ols_base = _fit_custom_ols(X_train_raw_list, y_train_list, X_test_raw_list, custom_ols_func)
         results["OLS_baseline"] = _make_result(
             model=ols_base["model"],
@@ -208,7 +220,7 @@ def train_models(
             source="part1",
         )
 
-        # 2. OLS Selected (using best features)
+        # 2. OLS Selected (using best features after VIF filter)
         ols_sel = _fit_custom_ols(X_train_best_list, y_train_list, X_test_best_list, custom_ols_func)
         results["OLS_selected"] = _make_result(
             model=ols_sel["model"],
@@ -221,7 +233,7 @@ def train_models(
         )
 
         # 3. Ridge Custom (using best features and lambda_ridge)
-        ridge_val = lambda_ridge if lambda_ridge is not None else 1000.0
+        ridge_val = lambda_ridge if lambda_ridge is not None else 100.0
         ridge = _fit_custom_ridge(
             X_train_best_list,
             y_train_list,
@@ -239,35 +251,34 @@ def train_models(
             best_params={"lambda": ridge_val},
             source="part1",
         )
-        
-        # Populate cv_scores for K-Fold CV plot and metadata check in notebook
+
+        # Dò tham số K-Fold CV để vẽ đồ thị trong notebook
         ridge_grid = {"alpha": [0.01, 0.1, 1.0, 5.0, 10.0, 50.0, 100.0, 500.0, 1000.0]}
         _, best_rmse, cv_results = hyperparameter_tuning(
             X_train_best_list, y_train_list, param_grid=ridge_grid, k=k
         )
         results["Ridge_custom"]["best_lambda"] = ridge_val
-        cv_scores_dict = {
-            "lambda_values": [r["lambda"] for r in cv_results],
-            "mean_scores": [r["cv_rmse"] for r in cv_results],
+        results["Ridge_custom"]["cv_scores"] = {
+            "lambda_values": [float(r["lambda"]) for r in cv_results],
+            "mean_scores": [float(r["cv_rmse"]) for r in cv_results],
             "std_scores": [0.0] * len(cv_results),
             "best_lambda": ridge_val,
         }
-        results["Ridge_custom"]["cv_scores"] = cv_scores_dict
 
         # 4. Kernel Ridge (using best features)
-        kernel_params = kernel_params or {"alpha": lambda_kernel, "kernel": "rbf", "gamma": 0.1}
+        k_params = kernel_params or {"alpha": lambda_kernel, "kernel": "rbf", "gamma": 0.1}
         results["Kernel_Ridge"] = _train_kernel_ridge(
             X_train_best_list,
             y_train_list,
             X_test_best_list,
             y_test_list,
-            kernel_params=kernel_params,
+            kernel_params=k_params,
             random_state=random_state,
             sample_size=kernel_sample_size,
         )
 
         # 5. Bayesian Linear (using best features)
-        bayesian_params = bayesian_params or {
+        b_params = bayesian_params or {
             "prior_precision": 1e-6,
             "noise_precision": 1.0,
             "fit_intercept": True,
@@ -277,19 +288,17 @@ def train_models(
             y_train_list,
             X_test_best_list,
             y_test_list,
-            bayesian_params=bayesian_params,
+            bayesian_params=b_params,
         )
 
         return results
 
     else:
-        # Standard call style: train_models(X_train, y_train, X_test, y_test, ...)
+        # Kiểu gọi gói chuẩn (Standard Package Call)
         X_train_list = _to_list(X_train)
         y_train_list = _to_list(y_train)
         X_test_list = _to_list(X_test)
         y_test_list = _to_list(y_test)
-
-        results = {}
 
         # LUỒNG OLS
         if include_ols:
@@ -330,28 +339,28 @@ def train_models(
             results["Ridge"]["cv_results"] = ridge_cv_results
             results["Ridge"]["best_lambda"] = ridge_alpha
             results["Ridge"]["cv_scores"] = {
-                "lambda_values": [r["lambda"] for r in ridge_cv_results],
-                "mean_scores": [r["cv_rmse"] for r in ridge_cv_results],
+                "lambda_values": [float(r["lambda"]) for r in ridge_cv_results],
+                "mean_scores": [float(r["cv_rmse"]) for r in ridge_cv_results],
                 "std_scores": [0.0] * len(ridge_cv_results),
                 "best_lambda": ridge_alpha,
             }
 
         # LUỒNG KERNEL
         if include_kernel:
-            kernel_params = kernel_params or {"alpha": 1.0, "kernel": "rbf", "gamma": 0.1}
+            k_params = kernel_params or {"alpha": 1.0, "kernel": "rbf", "gamma": 0.1}
             results["Kernel_Ridge"] = _train_kernel_ridge(
                 X_train_list,
                 y_train_list,
                 X_test_list,
                 y_test_list,
-                kernel_params=kernel_params,
+                kernel_params=k_params,
                 random_state=random_state,
                 sample_size=kernel_sample_size,
             )
 
         # LUỒNG BAYESIAN
         if include_bayesian:
-            bayesian_params = bayesian_params or {
+            b_params = bayesian_params or {
                 "prior_precision": 1e-6,
                 "noise_precision": 1.0,
                 "fit_intercept": True,
@@ -361,7 +370,7 @@ def train_models(
                 y_train_list,
                 X_test_list,
                 y_test_list,
-                bayesian_params=bayesian_params,
+                bayesian_params=b_params,
             )
 
         return results
@@ -434,46 +443,28 @@ def _train_bayesian_linear(
     )
 
 
-def _vif_table(X_list: list, feature_names: list | None = None) -> pd.DataFrame:
+def _vif_table_legacy_unused(X_list: list, feature_names: list | None = None) -> pd.DataFrame:
     X_list = _to_list(X_list)
-    if feature_names is not None:
-        names = _to_list(feature_names)
-    else:
-        names = [f"x{i}" for i in range(len(X_list[0]))]
+    names = feature_names or [f"x{i}" for i in range(len(X_list[0]))]
 
     vif_scores = vif(X_list)
-    if isinstance(vif_scores, pd.DataFrame) and "VIF_Score" in vif_scores.columns:
-        vif_scores = vif_scores["VIF_Score"].tolist()
 
     df = pd.DataFrame({"Feature": names, "VIF_Score": vif_scores})
     return df.sort_values("VIF_Score", ascending=False).reset_index(drop=True)
 
 
-def run_diagnostics(
-    X: list = None,
-    y: list = None,
+def run_diagnostics_legacy_unused(
+    X: list,
+    y: list,
     feature_names: list | None = None,
-    X_train_raw=None,
-    y_train=None,
-    custom_ols_func=None,
-    custom_vif_func=None,
-    custom_inference_func=None,
-    **kwargs
-) -> Any:
-    # Handle notebook call style
-    if X_train_raw is not None:
-        X = X_train_raw
-    if y_train is not None:
-        y = y_train
-
+) -> dict:
     X_list = _to_list(X)
     y_list = _to_list(y)
     names = feature_names or [f"x{i}" for i in range(len(X_list[0]))]
     X_design = _add_intercept(X_list)
 
     # Tính Beta bằng hàm tự code
-    ols_f = custom_ols_func or ols_fit
-    beta = ols_f(X_design, y_list)
+    beta = ols_fit(X_design, y_list)
 
     # Tính Dự đoán & Phần dư bằng List Comprehension
     fitted = [sum(x_val * b for x_val, b in zip(row, beta)) for row in X_design]
@@ -485,38 +476,171 @@ def run_diagnostics(
     sigma2 = rss / dof
 
     # Bảng suy diễn thống kê (T-test)
-    inf_f = custom_inference_func or coef_inference
-    inference_df = inf_f(X_design, y_list, beta, sigma2).copy()
+    inference_df = coef_inference(X_design, y_list, beta, sigma2).copy()
     expected_names = ["Intercept"] + names
     if len(inference_df) == len(expected_names):
         inference_df.insert(0, "Feature", expected_names)
 
-    vif_f = custom_vif_func or vif
-    # We call custom_vif_func if provided
-    vif_scores = vif_f(X_list)
-    if isinstance(vif_scores, pd.DataFrame) and "VIF_Score" in vif_scores.columns:
-        vif_scores = vif_scores["VIF_Score"].tolist()
-    elif isinstance(vif_scores, pd.DataFrame) and "VIF" in vif_scores.columns:
-        vif_scores = vif_scores["VIF"].tolist()
-    elif isinstance(vif_scores, pd.DataFrame):
-        vif_scores = vif_scores.iloc[:, 1].tolist() if vif_scores.shape[1] > 1 else vif_scores.iloc[:, 0].tolist()
+    return {
+        "coefficients": beta,
+        "predictions_train": fitted,
+        "residuals_train": residuals,
+        "sigma2": float(sigma2),
+        "VIF": _vif_table(X_list, feature_names=names),
+        "coef_inference": inference_df,
+    }
 
-    vif_df = pd.DataFrame({"Feature": names, "VIF": vif_scores, "VIF_Score": vif_scores})
-    vif_df = vif_df.sort_values("VIF", ascending=False).reset_index(drop=True)
 
-    if X_train_raw is not None or custom_ols_func is not None:
-        # Called from notebook: expects a DataFrame that can be sorted by "VIF"
-        return vif_df
-    else:
-        # Standard package call: expects a dictionary
-        return {
-            "coefficients": beta,
-            "predictions_train": fitted,
-            "residuals_train": residuals,
-            "sigma2": float(sigma2),
-            "VIF": vif_df,
-            "coef_inference": inference_df,
-        }
+def _vif_table(
+    X_list: list,
+    feature_names: list | None = None,
+    custom_vif_func: Callable | None = None,
+) -> pd.DataFrame:
+    X_list = _to_list(X_list)
+    names = feature_names or [f"x{i}" for i in range(len(X_list[0]))]
+    vif_func = custom_vif_func or vif
+    vif_scores = vif_func(X_list)
+
+    if isinstance(vif_scores, pd.DataFrame):
+        df = vif_scores.copy()
+        if "VIF_Score" not in df.columns and len(df.columns) >= 2:
+            df = df.rename(columns={df.columns[-1]: "VIF_Score"})
+        if "VIF" not in df.columns and "VIF_Score" in df.columns:
+            df["VIF"] = df["VIF_Score"]
+        if len(df) == len(names):
+            df["Feature"] = names
+        return df.sort_values("VIF_Score", ascending=False).reset_index(drop=True)
+
+    if (
+        isinstance(vif_scores, list)
+        and vif_scores
+        and isinstance(vif_scores[0], (list, tuple))
+        and len(vif_scores[0]) >= 2
+    ):
+        df = pd.DataFrame(vif_scores, columns=["Feature", "VIF_Score"])
+        df["VIF"] = df["VIF_Score"]
+        if len(df) == len(names):
+            df["Feature"] = names
+        return df.sort_values("VIF_Score", ascending=False).reset_index(drop=True)
+
+    df = pd.DataFrame({"Feature": names, "VIF_Score": _to_list(vif_scores)})
+    df["VIF"] = df["VIF_Score"]
+    return df.sort_values("VIF_Score", ascending=False).reset_index(drop=True)
+
+
+def run_diagnostics(
+    X: list | None = None,
+    y: list | None = None,
+    feature_names: list | None = None,
+    X_train_raw: list | None = None,
+    y_train: list | None = None,
+    custom_ols_func: Callable | None = None,
+    custom_vif_func: Callable | None = None,
+    custom_inference_func: Callable | None = None,
+) -> dict:
+    X = X if X is not None else X_train_raw
+    y = y if y is not None else y_train
+    if X is None or y is None:
+        raise ValueError("run_diagnostics requires X/y or X_train_raw/y_train.")
+
+    X_list = _to_list(X)
+    y_list = _to_list(y)
+    names = feature_names or [f"x{i}" for i in range(len(X_list[0]))]
+    X_design = _add_intercept(X_list)
+    ols_func = custom_ols_func or ols_fit
+    inference_func = custom_inference_func or coef_inference
+
+    beta = ols_func(X_design, y_list)
+    fitted = [sum(x_val * b for x_val, b in zip(row, beta)) for row in X_design]
+    residuals = [y_i - y_hat_i for y_i, y_hat_i in zip(y_list, fitted)]
+
+    rss = sum(r**2 for r in residuals)
+    dof = max(len(X_design) - len(X_design[0]), 1)
+    sigma2 = rss / dof
+
+    inference_df = None
+    try:
+        inference_df = inference_func(X_design, y_list, beta, sigma2).copy()
+        expected_names = ["Intercept"] + names
+        if len(inference_df) == len(expected_names):
+            inference_df.insert(0, "Feature", expected_names)
+    except ValueError:
+        inference_df = None
+
+    return DiagnosticsResult({
+        "coefficients": beta,
+        "predictions_train": fitted,
+        "residuals_train": residuals,
+        "sigma2": float(sigma2),
+        "VIF": _vif_table(X_list, feature_names=names, custom_vif_func=custom_vif_func),
+        "coef_inference": inference_df,
+    })
+
+
+def _regularized_gamma_p(a: float, x: float) -> float:
+    if x <= 0:
+        return 0.0
+
+    eps = 1e-12
+    max_iter = 1000
+    gln = math.lgamma(a)
+    ap = a
+    total = 1.0 / a
+    delta = total
+
+    for _ in range(max_iter):
+        ap += 1.0
+        delta *= x / ap
+        total += delta
+        if abs(delta) < abs(total) * eps:
+            break
+
+    return total * math.exp(-x + a * math.log(x) - gln)
+
+
+def _regularized_gamma_q(a: float, x: float) -> float:
+    if x <= 0:
+        return 1.0
+
+    if x < a + 1.0:
+        return 1.0 - _regularized_gamma_p(a, x)
+
+    eps = 1e-12
+    tiny = 1e-300
+    max_iter = 1000
+    gln = math.lgamma(a)
+    b = x + 1.0 - a
+    c = 1.0 / tiny
+    d = 1.0 / b if abs(b) > tiny else 1.0 / tiny
+    h = d
+
+    for i in range(1, max_iter + 1):
+        an = -float(i) * (float(i) - a)
+        b += 2.0
+        d = an * d + b
+        if abs(d) < tiny:
+            d = tiny
+        c = b + an / c
+        if abs(c) < tiny:
+            c = tiny
+        d = 1.0 / d
+        delta = d * c
+        h *= delta
+        if abs(delta - 1.0) < eps:
+            break
+
+    return math.exp(-x + a * math.log(x) - gln) * h
+
+
+def _chi_square_sf(statistic: float, df: int) -> float:
+    """Survival function P(Chi-square(df) >= statistic) without SciPy."""
+    if df <= 0:
+        raise ValueError("df must be positive for chi-square survival function.")
+    if statistic <= 0:
+        return 1.0
+
+    p_value = _regularized_gamma_q(0.5 * df, 0.5 * statistic)
+    return min(max(float(p_value), 0.0), 1.0)
 
 
 def evaluate_gauss_markov_assumptions(
@@ -526,29 +650,27 @@ def evaluate_gauss_markov_assumptions(
 ) -> dict:
     """kiểm định Jarque-Bera và Breusch-Pagan"""
     X_list = _to_list(X)
-    res_list = _to_list(residuals)
-
-    # Check if this is a notebook call: evaluate_gauss_markov_assumptions(X_train_best, y_train, best_residuals)
-    # where the second argument is y_train and the third argument is a list of residuals of mismatching length
+    
     is_third_arg_numeric = False
     if feature_names is not None:
         try:
             feat_list = _to_list(feature_names)
-            if len(feat_list) > 0 and isinstance(feat_list[0], (int, float, np.number)):
+            if len(feat_list) > 0 and isinstance(feat_list[0], (int, float)):
                 is_third_arg_numeric = True
         except Exception:
             pass
 
     if is_third_arg_numeric:
-        # Notebook signature workaround: X = X_train_best, residuals = y_train, feature_names = best_residuals
+        # Notebook workaround: X_train_best, y_train, best_residuals
         # Reconstruct standard OLS residuals on the train set (X, residuals as y)
-        y_train_list = res_list
+        y_train_list = _to_list(residuals)
         X_design = _add_intercept(X_list)
         beta_ols = ols_fit(X_design, y_train_list)
         fitted = [sum(x_val * b for x_val, b in zip(row, beta_ols)) for row in X_design]
         res_list = [y_i - y_hat_i for y_i, y_hat_i in zip(y_train_list, fitted)]
         names = None
     else:
+        res_list = _to_list(residuals)
         names = feature_names
         if len(res_list) != len(X_list):
             res_list = [0.0] * len(X_list)
@@ -570,7 +692,10 @@ def evaluate_gauss_markov_assumptions(
     X_aux = _add_intercept(X_list)
 
     # Hồi quy bình phương phần dư theo X (Mô hình phụ)
-    beta_aux = ols_fit(X_aux, squared_res)
+    try:
+        beta_aux = ols_fit(X_aux, squared_res)
+    except ValueError:
+        beta_aux = ridge_fit(X_aux, squared_res, 1e-8)
     pred_aux = [sum(x_val * b for x_val, b in zip(row, beta_aux)) for row in X_aux]
 
     # Tính R2 của mô hình phụ
@@ -580,17 +705,9 @@ def evaluate_gauss_markov_assumptions(
     bp_r2 = 1.0 - (rss_aux / tss_aux) if tss_aux > 0 else 0.0
     bp_stat = n * bp_r2
 
-    # ============================================
-    # NOTE: Đang cần phương án "tự code" đoạn này
-    # NOTE: chỉ dùng dể soi bảng thống kê
-    try:
-        import scipy.stats as st
-
-        bp_p_value = float(st.chi2.sf(bp_stat, df=len(X_list[0])))
-        jb_p_value = float(st.chi2.sf(jb_stat, df=2))
-    except ImportError:
-        bp_p_value = None
-        jb_p_value = None
+    # Chi-square p-values are computed with pure Python instead of scipy.stats.
+    bp_p_value = _chi_square_sf(bp_stat, df=len(X_list[0]))
+    jb_p_value = _chi_square_sf(jb_stat, df=2)
 
     return {
         "normality": {
@@ -717,26 +834,25 @@ def hyperparameter_tuning(
     X_train,
     y_train,
     model_class=None,
-    param_grid=None,
+    param_grid: dict | None = None,
     k: int = 5,
     **kwargs
 ) -> tuple:
     """
     Duyệt qua các giá trị Lambda để tìm ra cấu hình có RMSE thấp nhất.
+    Hỗ trợ cả định dạng trả về 2-tuple cho notebook và 3-tuple cho package.
     """
-    # If param_grid is None, it means called positionally:
-    # hyperparameter_tuning(X_train_list, y_train_list, param_grid=ridge_param_grid, k=k)
-    # so model_class is actually param_grid
+    # Xử lý trường hợp gọi vị trí: hyperparameter_tuning(X_train, y_train, param_grid, k)
     if param_grid is None and isinstance(model_class, dict):
         param_grid = model_class
         model_class = None
-    elif param_grid is None:
-        param_grid = {"alpha": [1.0]}
 
+    param_grid = param_grid or {"alpha": [0.01, 0.1, 1.0, 10.0, 100.0, 1000.0]}
+    
+    # Ép kiểu list thuần
     X_train = _to_list(X_train)
     y_train = _to_list(y_train)
 
-    # trích xuất danh sách các Lambda cần thử nghiệm
     lambda_values = param_grid.get("alpha", param_grid.get("lambda", [1.0]))
     if hasattr(lambda_values, "tolist"):
         lambda_values = lambda_values.tolist()
@@ -751,59 +867,49 @@ def hyperparameter_tuning(
     best_rmse = float("inf")
     cv_results = []
 
-    # duyệt qua từng siêu tham số
     for lam in lambda_values:
         mse_scores = []
 
-        # k-fold loop
         for i in range(k):
             val_start = i * fold_size
             val_end = n if i == k - 1 else (i + 1) * fold_size
 
-            # Tách tập Validation
             X_val = X_train[val_start:val_end]
             y_val = y_train[val_start:val_end]
 
-            # Tách tập Train
             X_tr = X_train[:val_start] + X_train[val_end:]
             y_tr = y_train[:val_start] + y_train[val_end:]
 
-            # Tiền xử lý: Chèn cột Bias (Intercept)
             X_tr_design = _add_intercept(X_tr)
             X_val_design = _add_intercept(X_val)
 
             beta_hat = ridge_fit(X_tr_design, y_tr, lam)
 
-            # Dự đoán trên tập Validation
             y_pred = [
                 sum(x_ij * b_j for x_ij, b_j in zip(row, beta_hat))
                 for row in X_val_design
             ]
 
-            # Tính MSE của fold
             mse = sum((y_v - y_p) ** 2 for y_v, y_p in zip(y_val, y_pred)) / len(y_val)
             mse_scores.append(mse)
 
-        # Tính trung bình RMSE cho giá trị lambda hiện tại
         mean_rmse = math.sqrt(sum(mse_scores) / k)
         cv_results.append({"lambda": float(lam), "cv_rmse": float(mean_rmse)})
 
-        # Cập nhật Kỷ lục (Best Params)
         if mean_rmse < best_rmse:
             best_rmse = mean_rmse
             best_lam = float(lam)
 
     best_params = {"alpha": best_lam, "lambda": best_lam}
 
-    # Notebook expects a 2-tuple: best_lambda_ridge, cv_scores = hyperparameter_tuning(...)
-    # when model_class parameter (or arg) is explicitly passed
     if model_class is not None:
+        # Kiểu trả về 2-tuple cho Jupyter notebook
         cv_scores_dict = {
-            "lambda_values": lambda_values,
-            "mean_scores": [r["cv_rmse"] for r in cv_results],
-            "std_scores": [0.0] * len(cv_results),
-            "best_lambda": best_lam,
+            "lambda_values": [float(r["lambda"]) for r in cv_results],
+            "mean_scores": [float(r["cv_rmse"]) for r in cv_results],
+            "best_lambda": float(best_lam),
         }
-        return best_lam, cv_scores_dict
+        return float(best_lam), cv_scores_dict
     else:
+        # Kiểu trả về 3-tuple cho package
         return best_params, float(best_rmse), cv_results

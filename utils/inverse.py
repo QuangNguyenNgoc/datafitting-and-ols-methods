@@ -2,13 +2,20 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from .matrix_utils import (
-    Matrix, Number, _to_matrix, _shape, _identity,
-    _augment, _swap_rows, _clean_small_entries
+    Matrix,
+    Number,
+    _to_matrix,
+    _shape,
+    _identity,
+    _augment,
+    _swap_rows,
+    _clean_small_entries,
 )
 
 """
 Tính ma trận nghịch đảo bằng Gauss-Jordan.
 """
+
 
 def inverse(A: Sequence[Sequence[Number]], eps: float = 1e-12) -> Matrix:
     """
@@ -18,7 +25,7 @@ def inverse(A: Sequence[Sequence[Number]], eps: float = 1e-12) -> Matrix:
 
     Đầu ra:
     - Ma trận nghịch đảo A^{-1}
-    
+
     * Nếu A không khả nghịch thì hàm báo lỗi.
     """
     matrix = _to_matrix(A)

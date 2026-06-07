@@ -8,6 +8,7 @@ from .gaussian import _rref
 Tính hạng ma trận và các cơ sở liên quan.
 """
 
+
 def rank_and_basis(A: Sequence[Sequence[Number]], eps: float = 1e-12) -> Dict[str, Any]:
     """
     Tính hạng của ma trận và trả về cơ sở của:

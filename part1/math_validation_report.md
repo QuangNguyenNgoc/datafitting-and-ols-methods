@@ -57,12 +57,12 @@ Despite these different numerical strategies (SVD vs QR vs direct inversion), th
 solve the same mathematical system. The following table confirms that the resulting
 $\hat{\beta}$ vectors are identical up to floating-point precision:
 
-| Coefficient | $\beta_{\text{true}}$ | $\hat{\beta}_{\text{custom}}$ | $\hat{\beta}_{\text{sklearn}}$ | $\hat{\beta}_{\text{statsmodels}}$ | $|\Delta|$ (custom vs sklearn) |
-|:---|---:|---:|---:|---:|---:|
-| $\beta_0$ (intercept) |     3.870864 |     4.120352 |     4.120352 |     4.120352 | 0.00e+00 |
-| $\beta_1$ |     2.798755 |     2.964710 |     2.964710 |     2.964710 | 8.88e-16 |
-| $\beta_2$ |     1.420316 |     1.640310 |     1.640310 |     1.640310 | 5.11e-15 |
-| $\beta_3$ |    -4.158600 |    -4.110641 |    -4.110641 |    -4.110641 | 5.33e-15 |
+| Coefficient           | $\beta_{\text{true}}$ | $\hat{\beta}_{\text{custom}}$ | $\hat{\beta}_{\text{sklearn}}$ | $\hat{\beta}_{\text{statsmodels}}$ |        $ | \Delta | $ (custom vs sklearn) |
+| :-------------------- | --------------------: | ----------------------------: | -----------------------------: | ---------------------------------: | -------: | ------ | --------------------- |
+| $\beta_0$ (intercept) |              3.870864 |                      4.120352 |                       4.120352 |                           4.120352 | 0.00e+00 |
+| $\beta_1$             |              2.798755 |                      2.964710 |                       2.964710 |                           2.964710 | 8.88e-16 |
+| $\beta_2$             |              1.420316 |                      1.640310 |                       1.640310 |                           1.640310 | 5.11e-15 |
+| $\beta_3$             |             -4.158600 |                     -4.110641 |                      -4.110641 |                          -4.110641 | 5.33e-15 |
 
 The column $|\Delta|$ shows the absolute difference between our implementation and
 scikit-learn. Values on the order of $10^{-10}$ or smaller confirm **numerical
@@ -90,13 +90,13 @@ $$
 
 ### 3.2 Computed Values for This Dataset
 
-| Quantity | Value |
-|:---|---:|
-| $\bar{y}$ (sample mean) | 4.167508 |
-| $RSS = \| e \|^2$ | 88.445654 |
-| $TSS = \| y - \bar{y} \mathbf{1} \|^2$ | 1575.555812 |
-| $R^2 = 1 - RSS / TSS$ | 0.943864 |
-| Adjusted $R^2 = 1 - \frac{n-1}{n-p-1}(1 - R^2)$ | 0.940203 |
+| Quantity                                        |       Value |
+| :---------------------------------------------- | ----------: |
+| $\bar{y}$ (sample mean)                         |    4.167508 |
+| $RSS = \| e \|^2$                               |   88.445654 |
+| $TSS = \| y - \bar{y} \mathbf{1} \|^2$          | 1575.555812 |
+| $R^2 = 1 - RSS / TSS$                           |    0.943864 |
+| Adjusted $R^2 = 1 - \frac{n-1}{n-p-1}(1 - R^2)$ |    0.940203 |
 
 ### 3.3 Algebraic Interpretation
 
@@ -136,11 +136,11 @@ $$
 H = X (X^T X)^{-1} X^T
 $$
 
-| Property | Expected | Observed |
-|:---|:---|:---|
-| Shape | $(50, 50)$ | $(50, 50)$ |
-| $\text{tr}(H) = p + 1$ | 4 | 4.000000 |
-| Idempotency: $\max |H - H^2|$ | $\approx 0$ | 1.25e-16 |
+| Property               | Expected   | Observed   |
+| :--------------------- | :--------- | :--------- | ----------- | -------- |
+| Shape                  | $(50, 50)$ | $(50, 50)$ |
+| $\text{tr}(H) = p + 1$ | 4          | 4.000000   |
+| Idempotency: $\max     | H - H^2    | $          | $\approx 0$ | 1.25e-16 |
 
 The trace of $H$ equals the number of estimated parameters (including the intercept),
 confirming that $H$ projects onto a $(p+1)$-dimensional subspace. The idempotency
@@ -160,8 +160,8 @@ $$
 where $R^2_j$ is the $R^2$ from that auxiliary regression. A $VIF_j > 10$ signals
 severe multicollinearity.
 
-| Feature | $VIF$ |
-|:---|---:|
+| Feature |  $VIF$ |
+| :------ | -----: |
 | $x_{1}$ | 1.0798 |
 | $x_{2}$ | 1.0274 |
 | $x_{3}$ | 1.0569 |
@@ -176,12 +176,12 @@ values close to 1.0 are expected, confirming negligible multicollinearity (as de
 With $\hat{\sigma}^2 = RSS / (n - p - 1) = 1.922732$, the standard errors, $t$-statistics,
 and $p$-values are:
 
-| Coefficient | Estimate | Std. Error | $t$-statistic | $p$-value | Sig. |
-|:---|---:|---:|---:|---:|:---|
-| $\beta_{0}$ | 4.120352 | 0.199177 | 20.6869 | 0.000000 | \* |
-| $\beta_{1}$ | 2.964710 | 0.274931 | 10.7835 | 0.000000 | \* |
-| $\beta_{2}$ | 1.640310 | 0.199024 | 8.2418 | 0.000000 | \* |
-| $\beta_{3}$ | -4.110641 | 0.193689 | -21.2229 | 0.000000 | \* |
+| Coefficient |  Estimate | Std. Error | $t$-statistic | $p$-value | Sig. |
+| :---------- | --------: | ---------: | ------------: | --------: | :--- |
+| $\beta_{0}$ |  4.120352 |   0.199177 |       20.6869 |  0.000000 | \*   |
+| $\beta_{1}$ |  2.964710 |   0.274931 |       10.7835 |  0.000000 | \*   |
+| $\beta_{2}$ |  1.640310 |   0.199024 |        8.2418 |  0.000000 | \*   |
+| $\beta_{3}$ | -4.110641 |   0.193689 |      -21.2229 |  0.000000 | \*   |
 
 Significance codes: \* indicates $p < 0.05$.
 
@@ -189,24 +189,24 @@ Significance codes: \* indicates $p < 0.05$.
 
 ## 7. Additional Metrics
 
-| Metric | Value |
-|:---|---:|
-| MAE | 1.084128 |
-| RMSE | 1.330005 |
-| $R^2$ | 0.943864 |
+| Metric         |    Value |
+| :------------- | -------: |
+| MAE            | 1.084128 |
+| RMSE           | 1.330005 |
+| $R^2$          | 0.943864 |
 | Adjusted $R^2$ | 0.940203 |
 
 ---
 
 ## 8. Assertion Summary
 
-| Test | Status | Detail |
-|:---|:---|:---|
-| Beta vs sklearn | ✅ PASS | Max |beta_custom - beta_sklearn| = 5.33e-15 |
-| Beta vs statsmodels | ✅ PASS | Max |beta_custom - beta_statsmodels| = 0.00e+00 |
-| R2 consistency | ✅ PASS | |R2_function - R2_manual| = 0.00e+00 |
-| Hat matrix idempotency | ✅ PASS | Max |H - H^2| = 1.25e-16 |
-| Hat matrix trace | ✅ PASS | tr(H) = 4.000000, expected 4 |
+| Test                   | Status  | Detail                       |
+| :--------------------- | :------ | :--------------------------- | ------------------------------ | ---------- |
+| Beta vs sklearn        | ✅ PASS | Max                          | beta_custom - beta_sklearn     | = 5.33e-15 |
+| Beta vs statsmodels    | ✅ PASS | Max                          | beta_custom - beta_statsmodels | = 0.00e+00 |
+| R2 consistency         | ✅ PASS |                              | R2_function - R2_manual        | = 0.00e+00 |
+| Hat matrix idempotency | ✅ PASS | Max                          | H - H^2                        | = 1.25e-16 |
+| Hat matrix trace       | ✅ PASS | tr(H) = 4.000000, expected 4 |
 
 ---
 
