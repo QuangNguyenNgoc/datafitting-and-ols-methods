@@ -30,7 +30,17 @@ except Exception:
 from part1.ols_implementation import ols_fit, coef_inference, vif, model_metrics
 from part1.ridge_lasso import ridge_fit
 from part1.cross_validation import kfold_cv
-from part1.ridge_lasso import ridge_fit
+
+
+class DiagnosticsResult(dict):
+    """Dict-like diagnostics result that can also behave like the VIF table."""
+
+    def sort_values(self, *args, **kwargs):
+        vif_table = self["VIF"]
+        by = kwargs.get("by")
+        if by == "VIF" and "VIF" not in vif_table.columns and "VIF_Score" in vif_table.columns:
+            kwargs["by"] = "VIF_Score"
+        return vif_table.sort_values(*args, **kwargs)
 
 
 def _add_intercept(X: list) -> list:
@@ -84,11 +94,12 @@ def _make_result(
 ) -> dict:
     metrics = compute_metrics(y_test, predictions_test)
     train_metrics = compute_metrics(y_train, predictions_train)
+    coefficients_list = _to_list(coefficients) if coefficients is not None else None
 
     result = {
         "model": model,
-        "coefficients": coefficients,
-        "feature_coefficients": coefficients[1:] if coefficients else None,
+        "coefficients": coefficients_list,
+        "feature_coefficients": coefficients_list[1:] if coefficients_list is not None else None,
         "predictions_train": predictions_train,
         "predictions_test": predictions_test,
         "predictions": predictions_test,
@@ -320,7 +331,7 @@ def _train_bayesian_linear(
     )
 
 
-def _vif_table(X_list: list, feature_names: list | None = None) -> pd.DataFrame:
+def _vif_table_legacy_unused(X_list: list, feature_names: list | None = None) -> pd.DataFrame:
     X_list = _to_list(X_list)
     names = feature_names or [f"x{i}" for i in range(len(X_list[0]))]
 
@@ -330,7 +341,7 @@ def _vif_table(X_list: list, feature_names: list | None = None) -> pd.DataFrame:
     return df.sort_values("VIF_Score", ascending=False).reset_index(drop=True)
 
 
-def run_diagnostics(
+def run_diagnostics_legacy_unused(
     X: list,
     y: list,
     feature_names: list | None = None,
@@ -368,6 +379,158 @@ def run_diagnostics(
     }
 
 
+def _vif_table(
+    X_list: list,
+    feature_names: list | None = None,
+    custom_vif_func: Callable | None = None,
+) -> pd.DataFrame:
+    X_list = _to_list(X_list)
+    names = feature_names or [f"x{i}" for i in range(len(X_list[0]))]
+    vif_func = custom_vif_func or vif
+    vif_scores = vif_func(X_list)
+
+    if isinstance(vif_scores, pd.DataFrame):
+        df = vif_scores.copy()
+        if "VIF_Score" not in df.columns and len(df.columns) >= 2:
+            df = df.rename(columns={df.columns[-1]: "VIF_Score"})
+        if "VIF" not in df.columns and "VIF_Score" in df.columns:
+            df["VIF"] = df["VIF_Score"]
+        if len(df) == len(names):
+            df["Feature"] = names
+        return df.sort_values("VIF_Score", ascending=False).reset_index(drop=True)
+
+    if (
+        isinstance(vif_scores, list)
+        and vif_scores
+        and isinstance(vif_scores[0], (list, tuple))
+        and len(vif_scores[0]) >= 2
+    ):
+        df = pd.DataFrame(vif_scores, columns=["Feature", "VIF_Score"])
+        df["VIF"] = df["VIF_Score"]
+        if len(df) == len(names):
+            df["Feature"] = names
+        return df.sort_values("VIF_Score", ascending=False).reset_index(drop=True)
+
+    df = pd.DataFrame({"Feature": names, "VIF_Score": _to_list(vif_scores)})
+    df["VIF"] = df["VIF_Score"]
+    return df.sort_values("VIF_Score", ascending=False).reset_index(drop=True)
+
+
+def run_diagnostics(
+    X: list | None = None,
+    y: list | None = None,
+    feature_names: list | None = None,
+    X_train_raw: list | None = None,
+    y_train: list | None = None,
+    custom_ols_func: Callable | None = None,
+    custom_vif_func: Callable | None = None,
+    custom_inference_func: Callable | None = None,
+) -> dict:
+    X = X if X is not None else X_train_raw
+    y = y if y is not None else y_train
+    if X is None or y is None:
+        raise ValueError("run_diagnostics requires X/y or X_train_raw/y_train.")
+
+    X_list = _to_list(X)
+    y_list = _to_list(y)
+    names = feature_names or [f"x{i}" for i in range(len(X_list[0]))]
+    X_design = _add_intercept(X_list)
+    ols_func = custom_ols_func or ols_fit
+    inference_func = custom_inference_func or coef_inference
+
+    beta = ols_func(X_design, y_list)
+    fitted = [sum(x_val * b for x_val, b in zip(row, beta)) for row in X_design]
+    residuals = [y_i - y_hat_i for y_i, y_hat_i in zip(y_list, fitted)]
+
+    rss = sum(r**2 for r in residuals)
+    dof = max(len(X_design) - len(X_design[0]), 1)
+    sigma2 = rss / dof
+
+    inference_df = None
+    try:
+        inference_df = inference_func(X_design, y_list, beta, sigma2).copy()
+        expected_names = ["Intercept"] + names
+        if len(inference_df) == len(expected_names):
+            inference_df.insert(0, "Feature", expected_names)
+    except ValueError:
+        inference_df = None
+
+    return DiagnosticsResult({
+        "coefficients": beta,
+        "predictions_train": fitted,
+        "residuals_train": residuals,
+        "sigma2": float(sigma2),
+        "VIF": _vif_table(X_list, feature_names=names, custom_vif_func=custom_vif_func),
+        "coef_inference": inference_df,
+    })
+
+
+def _regularized_gamma_p(a: float, x: float) -> float:
+    if x <= 0:
+        return 0.0
+
+    eps = 1e-12
+    max_iter = 1000
+    gln = math.lgamma(a)
+    ap = a
+    total = 1.0 / a
+    delta = total
+
+    for _ in range(max_iter):
+        ap += 1.0
+        delta *= x / ap
+        total += delta
+        if abs(delta) < abs(total) * eps:
+            break
+
+    return total * math.exp(-x + a * math.log(x) - gln)
+
+
+def _regularized_gamma_q(a: float, x: float) -> float:
+    if x <= 0:
+        return 1.0
+
+    if x < a + 1.0:
+        return 1.0 - _regularized_gamma_p(a, x)
+
+    eps = 1e-12
+    tiny = 1e-300
+    max_iter = 1000
+    gln = math.lgamma(a)
+    b = x + 1.0 - a
+    c = 1.0 / tiny
+    d = 1.0 / b if abs(b) > tiny else 1.0 / tiny
+    h = d
+
+    for i in range(1, max_iter + 1):
+        an = -float(i) * (float(i) - a)
+        b += 2.0
+        d = an * d + b
+        if abs(d) < tiny:
+            d = tiny
+        c = b + an / c
+        if abs(c) < tiny:
+            c = tiny
+        d = 1.0 / d
+        delta = d * c
+        h *= delta
+        if abs(delta - 1.0) < eps:
+            break
+
+    return math.exp(-x + a * math.log(x) - gln) * h
+
+
+def _chi_square_sf(statistic: float, df: int) -> float:
+    """Survival function P(Chi-square(df) >= statistic) without SciPy."""
+    if df <= 0:
+        raise ValueError("df must be positive for chi-square survival function.")
+    if statistic <= 0:
+        return 1.0
+
+    p_value = _regularized_gamma_q(0.5 * df, 0.5 * statistic)
+    return min(max(float(p_value), 0.0), 1.0)
+
+
 def evaluate_gauss_markov_assumptions(
     X: list,
     residuals: list,
@@ -393,7 +556,10 @@ def evaluate_gauss_markov_assumptions(
     X_aux = _add_intercept(X_list)
 
     # Hồi quy bình phương phần dư theo X (Mô hình phụ)
-    beta_aux = ols_fit(X_aux, squared_res)
+    try:
+        beta_aux = ols_fit(X_aux, squared_res)
+    except ValueError:
+        beta_aux = ridge_fit(X_aux, squared_res, 1e-8)
     pred_aux = [sum(x_val * b for x_val, b in zip(row, beta_aux)) for row in X_aux]
 
     # Tính R2 của mô hình phụ
@@ -403,17 +569,9 @@ def evaluate_gauss_markov_assumptions(
     bp_r2 = 1.0 - (rss_aux / tss_aux) if tss_aux > 0 else 0.0
     bp_stat = n * bp_r2
 
-    # ============================================
-    # NOTE: Đang cần phương án "tự code" đoạn này
-    # NOTE: chỉ dùng dể soi bảng thống kê
-    try:
-        import scipy.stats as st
-
-        bp_p_value = float(st.chi2.sf(bp_stat, df=len(X_list[0])))
-        jb_p_value = float(st.chi2.sf(jb_stat, df=2))
-    except ImportError:
-        bp_p_value = None
-        jb_p_value = None
+    # Chi-square p-values are computed with pure Python instead of scipy.stats.
+    bp_p_value = _chi_square_sf(bp_stat, df=len(X_list[0]))
+    jb_p_value = _chi_square_sf(jb_stat, df=2)
 
     return {
         "normality": {
@@ -469,14 +627,14 @@ def plot_predictions(
     fig, axes = plt.subplots(1, n_models, figsize=(5 * n_models, 4), squeeze=False)
     axes = axes.ravel()
 
-    min_value = y_test.min()
-    max_value = y_test.max()
+    min_value = min(y_test_list)
+    max_value = max(y_test_list)
 
     for ax, (model_name, result) in zip(axes, results.items()):
         y_pred = _to_list(result["predictions_test"])
         min_value = min(min_value, min(y_pred))
         max_value = max(max_value, max(y_pred))
-        ax.scatter(y_test, y_pred, alpha=0.35, s=18)
+        ax.scatter(y_test_list, y_pred, alpha=0.35, s=18)
         ax.plot(
             [min_value, max_value], [min_value, max_value], color="red", linestyle="--"
         )
@@ -535,12 +693,13 @@ def plot_coefficients(results: dict, feature_names: list, top_n: int = 20):
 
 
 def hyperparameter_tuning(
-    X_train: list, y_train: list, param_grid: dict, k: int = 5
+    X_train: list, y_train: list, param_grid: dict | None = None, k: int = 5
 ) -> tuple:
     """
     Duyệt qua các giá trị Lambda để tìm ra cấu hình có RMSE thấp nhất.
     """
     # trích xuất danh sách các Lambda cần thử nghiệm
+    param_grid = param_grid or {"alpha": [0.01, 0.1, 1.0, 10.0, 100.0, 1000.0]}
     lambda_values = param_grid.get("alpha", param_grid.get("lambda", [1.0]))
     if hasattr(lambda_values, "tolist"):
         lambda_values = lambda_values.tolist()
