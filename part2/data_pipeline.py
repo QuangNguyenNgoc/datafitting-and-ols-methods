@@ -1,7 +1,6 @@
 """
 Data Pipeline
 ==============
-Tiền xử lý dữ liệu cho Part 2 (OOP Design).
 """
 
 import numpy as np
@@ -37,6 +36,7 @@ def train_test_split(
     return df_train, df_test
 
 
+
 class DataPipeline:
     def __init__(
         self,
@@ -57,11 +57,14 @@ class DataPipeline:
         extra_drop_columns = drop_columns or []
 
         self.target_name = target_name
-        self.drop_columns = list(dict.fromkeys(default_drop_columns + extra_drop_columns))
+        self.drop_columns = list(
+            dict.fromkeys(default_drop_columns + extra_drop_columns)
+        )
         self.categorical_columns = categorical_columns or ["Type", "Regionname"]
 
         self.scalers = {}
         self.imputation_values = {}
+        self.imputation_columns = []
         self.imputation_columns = []
         self.encoded_columns = []
         self.feature_names = []
@@ -93,9 +96,7 @@ class DataPipeline:
 
     def _validate_schema(self, X_df: pd.DataFrame) -> None:
         missing = [
-            column
-            for column in self.required_columns
-            if column not in X_df.columns
+            column for column in self.required_columns if column not in X_df.columns
         ]
         if missing:
             raise ValueError(f"Missing required columns: {missing}")
@@ -130,14 +131,22 @@ class DataPipeline:
 
         if is_train:
             self.imputation_columns = numeric_columns
-            median_values = result[self.imputation_columns].median().fillna(0.0).to_dict()
+            median_values = (
+                result[self.imputation_columns].median().fillna(0.0).to_dict()
+            )
             self.imputation_values = {
                 "method": "column_median",
                 "columns": self.imputation_columns,
-                "values": {column: float(value) for column, value in median_values.items()},
+                "values": {
+                    column: float(value) for column, value in median_values.items()
+                },
             }
         else:
-            missing_columns = [column for column in self.imputation_columns if column not in result.columns]
+            missing_columns = [
+                column
+                for column in self.imputation_columns
+                if column not in result.columns
+            ]
             if missing_columns:
                 raise ValueError(f"Missing imputation columns: {missing_columns}")
 
@@ -153,21 +162,27 @@ class DataPipeline:
             sale_years = self._sale_years(result, is_train)
             result["Age"] = (sale_years - result["YearBuilt"]).clip(lower=0)
 
-        rooms = result["Rooms"].replace(0, np.nan) if "Rooms" in result.columns else np.nan
+        rooms = (
+            result["Rooms"].replace(0, np.nan) if "Rooms" in result.columns else np.nan
+        )
 
         if "BuildingArea" in result.columns:
             result["BuildingArea_per_Room"] = result["BuildingArea"] / rooms
 
         if {"BuildingArea", "Landsize"}.issubset(result.columns):
             result["BuildingCoverage"] = result["BuildingArea"] / result["Landsize"]
-            result["BuildingCoverage"] = result["BuildingCoverage"].replace([np.inf, -np.inf], np.nan)
+            result["BuildingCoverage"] = result["BuildingCoverage"].replace(
+                [np.inf, -np.inf], np.nan
+            )
             result.loc[result["BuildingCoverage"] < 0, "BuildingCoverage"] = np.nan
 
         for column in self.categorical_columns:
             if column in result.columns:
                 result[column] = result[column].fillna("Unknown").astype(str)
 
-        existing_drop_columns = [column for column in self.drop_columns if column in result.columns]
+        existing_drop_columns = [
+            column for column in self.drop_columns if column in result.columns
+        ]
         result = result.drop(columns=existing_drop_columns)
 
         active_categorical_columns = [
@@ -196,14 +211,18 @@ class DataPipeline:
 
         if is_train:
             median_year = years.median()
-            self.sale_year_fallback = int(median_year) if not pd.isna(median_year) else 2017
+            self.sale_year_fallback = (
+                int(median_year) if not pd.isna(median_year) else 2017
+            )
 
         return years.fillna(self.sale_year_fallback)
 
     def _scale_features(self, X_df: pd.DataFrame, is_train: bool) -> pd.DataFrame:
         non_numeric_columns = X_df.select_dtypes(exclude=np.number).columns.tolist()
         if non_numeric_columns:
-            raise ValueError(f"Unexpected non-numeric columns before scaling: {non_numeric_columns}")
+            raise ValueError(
+                f"Unexpected non-numeric columns before scaling: {non_numeric_columns}"
+            )
 
         result = X_df.copy()
 

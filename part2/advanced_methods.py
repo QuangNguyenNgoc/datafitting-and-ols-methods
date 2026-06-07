@@ -218,8 +218,10 @@ def kernel_ridge_fit(
     coef0: float = 1.0,
 ):
     """Fit Kernel Ridge Regression and return handover artifacts."""
-    regularization = 1.0 if alpha is None and lambda_kernel is None else (
-        alpha if alpha is not None else lambda_kernel
+    regularization = (
+        1.0
+        if alpha is None and lambda_kernel is None
+        else (alpha if alpha is not None else lambda_kernel)
     )
     model = KernelRegression(
         alpha=float(regularization),
