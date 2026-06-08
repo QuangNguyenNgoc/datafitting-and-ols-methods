@@ -15,9 +15,9 @@
   #v(1.2cm)
   #image("../images/logo.png", width: 32%)
   #v(1.2cm)
-  #text(24pt, weight: "bold", fill: rgb("#1E3778"))[BÁO CÁO ĐỒ ÁN 1]
+  #text(24pt, weight: "bold", fill: rgb("#1E3778"))[BÁO CÁO ĐỒ ÁN 2]
   #v(0.4cm)
-  #text(22pt, weight: "bold")[Ma Trận và Cơ Sở của Tính Toán Khoa Học]
+  #text(20pt, weight: "bold")[Data Fitting và bình phương tối thiểu OLS]
   #v(0.4cm)
   #align(center)[
     #set text(15pt)
@@ -26,7 +26,7 @@
       column-gutter: 0.3cm,
       row-gutter: 0.2cm,
       align: (left, left),
-      [*Môn học:*], [Toán Ứng Dụng và Thống Kê],
+      [*Môn học:*], [Toán ứng dụng và thống kê],
       [*Lớp:*], [24CTT3],
     )
   ]
@@ -44,7 +44,7 @@
 
       [
         #align(left)[
-          #info-title[Nhóm 12 (CQ2024-3)]
+          #info-title[Thành viên thực hiện (CQ2024-3)]
           #v(0.15cm)
           #table(
             columns: (1fr, auto),
@@ -55,11 +55,11 @@
               right: 8pt,
               y: 4.5pt,
             ),
-            [Đinh Đức Hiếu], [24120002],
-            [Liên Trung Hiếu], [24120049],
-            [Trương Đình Nhật Huy], [24120064],
-            [#box[Nguyễn Ngọc Quang]], [24120127],
-            [Đặng Quang Tiến], [24120149]
+            [#link("mailto:24120002@student.hcmus.edu.vn")[Đinh Đức Hiếu]], [24120002],
+            [#link("mailto:24120049@student.hcmus.edu.vn")[Liên Trung Hiếu]], [24120049],
+            [#link("mailto:24120064@student.hcmus.edu.vn")[Trương Đình Nhật Huy]], [24120064],
+            [#link("mailto:24120127@student.hcmus.edu.vn")[Nguyễn Ngọc Quang]], [24120127],
+            [#link("mailto:24120149@student.hcmus.edu.vn")[Đặng Quang Tiến]], [24120149]
           )
         ]
       ],
@@ -82,6 +82,6 @@
 ]
 
 #place(bottom + center)[
-  #text(11pt)[Thành phố Hồ Chí Minh, ngày 20 tháng 4 năm 2026]
+  #text(11pt)[Thành phố Hồ Chí Minh, ngày 7 tháng 6 năm 2026]
   #v(0.5cm)
 ]
