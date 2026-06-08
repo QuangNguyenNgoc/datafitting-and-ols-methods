@@ -64,7 +64,6 @@ class DataPipeline:
         self.scalers = {}
         self.imputation_values = {}
         self.imputation_columns = []
-        self.imputation_columns = []
         self.encoded_columns = []
         self.feature_names = []
         self.numeric_fallbacks = {}
