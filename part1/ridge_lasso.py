@@ -1,41 +1,57 @@
 """
 Ridge Regression
 =================
-Cài đặt Ridge Regression và vẽ Ridge Trace.
+Cai dat Ridge Regression va ve Ridge Trace.
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
 
+from utils.matrix_utils import (
+    mat_transpose,
+    mat_mul,
+    matrix_vector_multiply,
+    _identity,
+)
+from utils.inverse import inverse
+
 
 def ridge_fit(X, y, lam):
     """
-    6. Cài đặt Ridge Regression from-scratch bằng NumPy.
+    6. Cai dat Ridge Regression tu scratch.
 
-    Công thức toán học:
+    Cong thuc toan hoc:
         beta_ridge = (X^T X + lam * I)^{-1} X^T y
 
-    Tham số:
-        X   : numpy array shape (n, p) - ma trận đặc trưng (đã bao gồm cột bias nếu cần)
-        y   : numpy array shape (n,)   - vector mục tiêu
-        lam : float                    - tham số regularization lambda (>= 0)
+    Tham so:
+        X   : ma tran thiet ke (m x p), KHONG co cot he so chan
+        y   : vector muc tieu (m,)
+        lam : tham so dieu chuan lambda >= 0
 
-    Ghi chú:
-        Khi lam = 0, kết quả trùng với OLS thông thường.
-        Lặp qua nhiều giá trị lambda để vẽ đồ thị Ridge Trace.
+    Tra ve:
+        beta_ridge: numpy array (p,)
     """
-    X_mat = np.array(X, dtype=float)
-    y_vec = np.array(y, dtype=float).flatten()
-    p = X_mat.shape[1]
-    # (X^T X + lam * I)^{-1} X^T y
-    A = X_mat.T @ X_mat + lam * np.eye(p)
-    b = X_mat.T @ y_vec
-    beta_ridge = np.linalg.solve(A, b)
-    return beta_ridge
+    X_arr = np.array(X, dtype=float)
+    y_arr = np.array(y, dtype=float).flatten()
+
+    X_list = [list(row) for row in X_arr]
+    y_list = list(y_arr)
+    p = len(X_list[0])
+
+    X_T = mat_transpose(X_list)
+    X_T_X = mat_mul(X_T, X_list)
+
+    I_p = _identity(p)
+    A = [
+        [X_T_X[i][j] + float(lam) * I_p[i][j] for j in range(p)]
+        for i in range(p)
+    ]
+
+    A_inv = inverse(A)
+    X_T_y = matrix_vector_multiply(X_T, y_list)
+    beta = matrix_vector_multiply(A_inv, X_T_y)
+    return np.array(beta, dtype=float)
 
 
 if __name__ == "__main__":
-    # TODO: Khởi tạo dữ liệu giả lập có hiện tượng đa cộng tuyến
-    # TODO: Gọi hàm ridge_fit để minh họa
-    # TODO: Kiểm chứng kết quả với sklearn.linear_model.Ridge
     print("Ridge Regression - Demo")

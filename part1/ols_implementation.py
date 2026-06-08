@@ -1,17 +1,14 @@
 """
 OLS Implementation and Inference
 ================================
-Cài đặt các hàm OLS cơ bản, tính ma trận chiếu, metrics, suy diễn thống kê,
-tính VIF và minh họa định lý Gauss-Markov.
+Cài đặt các hàm OLS cơ bản, tính ma trận chiếu, metrics, suy diễn thống kê, tính VIF và minh họa định lý Gauss-Markov.
 """
 
 import math
 import random
 
 import numpy as np
-import scipy.stats as stats
 import pandas as pd
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 from utils.matrix_utils import (
     mat_transpose,
@@ -21,52 +18,53 @@ from utils.matrix_utils import (
     matrix_vector_multiply,
 )
 from utils.inverse import inverse
+from utils.svd_solver import svd_solve, economic_svd
 
 from part1.utils_verif import _student_t_sf, _student_t_ppf
 
 
 def ols_fit(X, y):
     """
-    1. Tính vector hệ số beta_hat bằng phương pháp bình phương tối thiểu (OLS).
+    1. Tính vector hệ số beta_hat bằng phương pháp OLS.
 
     Công thức toán học:
         beta_hat = (X^T X)^{-1} X^T y
 
-    Cài đặt: dùng np.linalg.lstsq (giải qua SVD) để ổn định số,
-    tránh trường hợp X^T X gần singular.
+    Cài đặt dùng Economic SVD (trong utils/svd_solver.py):
+        X = U Sigma V^T  =>  beta_hat = V Sigma^{-1} U^T y
+
+    Ưu điểm SVD so với nghịch đảo trực tiếp:
+        - Ổn định số học khi X^T X gần suy biến
+        - Xử lý được ma trận chữ nhật (m > n hoặc m < n)
     """
-    X_mat = np.array(X, dtype=float)
-    y_vec = np.array(y, dtype=float).flatten()
-    # lstsq giải hệ bình phương tối thiểu: argmin ||X beta - y||^2
-    beta_hat, _, _, _ = np.linalg.lstsq(X_mat, y_vec, rcond=None)
-    return beta_hat
+    X_arr = np.array(X, dtype=float)
+    y_arr = np.array(y, dtype=float).flatten()
+    return svd_solve(X_arr, y_arr)
 
 
 def hat_matrix(X):
     """
-    2. Tính ma trận chiếu H (Hat matrix) bằng Economic SVD.
+    2. Tính ma trận chiếu H (Hat matrix).
 
     Công thức toán học:
-        H = X(X^T X)^{-1} X^T = U U^T   (với X = U S V^T, dạng economic SVD)
+        H = X (X^T X)^{-1} X^T
 
-    Lý do dùng SVD: tránh tràn bộ nhớ với ma trận lớn;
-    chỉ cần U là ma trận trực giao (n x r) với r = rank(X).
-    Điều kiện lũy đẳng: H @ H = H
+    Cài đặt dùng Economic SVD: X = U Sigma V^T
+        => H = U U^T  (vì X(X^TX)^{-1}X^T = UU^T)
+
+    Tính chất quan trọng:
+        - Lũy đẳng: H^2 = H
+        - Đối xứng: H^T = H
+        - tr(H) = rank(X) = p (số tham số ước lượng)
     """
-    X_mat = np.array(X, dtype=float)
-    # Economic SVD: U có shape (n, r), S có shape (r,), Vt có shape (r, p)
-    U, s, Vt = np.linalg.svd(X_mat, full_matrices=False)
-    # Xác định rank số trị thực (loại singular values xấp xỉ 0)
-    tol = np.finfo(float).eps * max(X_mat.shape) * s[0]
-    rank = int(np.sum(s > tol))
-    U_r = U[:, :rank]
-    # H = U_r @ U_r^T
-    return U_r @ U_r.T
+    X_arr = np.array(X, dtype=float)
+    U, _, _ = economic_svd(X_arr)
+    return U @ U.T
 
 
 def model_metrics(y: list, y_hat: list, p: int) -> dict:
     """
-    Tính các độ đo tổng hợp mô hình bằng 100% Python gốc:
+    Tính các độ đo tổng hợp mô hình:
     - RSS (Residual Sum of Squares)
     - TSS (Total Sum of Squares)
     - R^2 (Hệ số xác định)
@@ -101,18 +99,12 @@ def model_metrics(y: list, y_hat: list, p: int) -> dict:
         adj_r2 = float("nan")
         f_statistic = float("nan")
 
-    # MAE và RMSE (bổ sung để tương thích với report generator)
-    mae = sum(abs(e_i) for e_i in e) / n if n > 0 else 0.0
-    rmse = math.sqrt(rss / n) if n > 0 else 0.0
-
     return {
         "RSS": rss,
         "TSS": tss,
         "R2": r2,
         "Adj_R2": adj_r2,
         "F_statistic": f_statistic,
-        "MAE": mae,
-        "RMSE": rmse,
     }
 
 
@@ -122,7 +114,7 @@ def coef_inference(X: list, y: list, beta_hat: list, sigma2: float) -> pd.DataFr
     - Standard errors (sai số chuẩn của từng hệ số)
     - t-statistics (giá trị t)
     - p-values
-    - Khoảng tin cậy (Confidence Intervals) 95%
+    - Khoảng tin cậy 95%
     """
     X_mat = list(X)
     beta_list = list(beta_hat)
@@ -171,33 +163,50 @@ def vif(X):
        để kiểm tra hiện tượng đa cộng tuyến.
 
     Công thức: VIF_j = 1 / (1 - R^2_j)
-    Trong đó R^2_j là R^2 của hồi quy phụ: X_j ~ X_{-j} (hồi quy X cột j lên tất cả cột còn lại).
 
-    Cài đặt from-scratch bằng NumPy, không dùng statsmodels/sklearn.
+    Trong đó R^2_j là hệ số xác định khi hồi quy biến thứ j lên tất cả các biến còn lại (có hệ số chặn).
+
+    Tham số:
+        X: ma trận đặc trưng (m x p), KHÔNG bao gồm cột hệ số chặn
+
+    Trả về:
+        DataFrame với cột Feature và VIF_Score
     """
-    X_mat = np.array(X, dtype=float)
-    n, p = X_mat.shape
+    X_arr = np.array(X, dtype=float)
+    n, p = X_arr.shape
 
     vif_values = []
     for j in range(p):
-        # Hồi quy phụ: X[:, j] ~ X[:, -j] (tất cả cột trừ cột j)
-        X_other = np.delete(X_mat, j, axis=1)
-        beta_j, _, _, _ = np.linalg.lstsq(X_other, X_mat[:, j], rcond=None)
-        y_hat_j = X_other @ beta_j
+        # Biến j làm mục tiêu
+        y_j = X_arr[:, j].tolist()
 
-        # Tính R^2_j
-        ss_res = np.sum((X_mat[:, j] - y_hat_j) ** 2)
-        ss_tot = np.sum((X_mat[:, j] - np.mean(X_mat[:, j])) ** 2)
+        # Các biến còn lại + hệ số chặn làm đặc trưng
+        other_cols = [k for k in range(p) if k != j]
+        X_j_list = [
+            [1.0] + [float(X_arr[i, k]) for k in other_cols]
+            for i in range(n)
+        ]
 
-        if ss_tot == 0.0:
-            vif_j = np.inf
-        else:
-            r2_j = 1.0 - ss_res / ss_tot
-            vif_j = 1.0 / (1.0 - r2_j) if r2_j < 1.0 else np.inf
+        # Hồi quy OLS (qua ols_fit, dùng SVD trong utils)
+        beta_j = list(ols_fit(X_j_list, y_j))
 
+        # Tính y_hat
+        y_hat_j = [
+            sum(X_j_list[i][k] * beta_j[k] for k in range(len(beta_j)))
+            for i in range(n)
+        ]
+
+        # R^2 = 1 - RSS/TSS
+        y_mean_j = sum(y_j) / n
+        ss_res = sum((y_j[i] - y_hat_j[i]) ** 2 for i in range(n))
+        ss_tot = sum((y_j[i] - y_mean_j) ** 2 for i in range(n))
+
+        r2_j = 1.0 - ss_res / ss_tot if ss_tot > 1e-12 else 0.0
+        vif_j = 1.0 / (1.0 - r2_j) if (1.0 - r2_j) > 1e-12 else float("inf")
         vif_values.append(vif_j)
 
-    X_df = pd.DataFrame(X_mat)
+    # Giữ nguyên định dạng output cũ (Feature = chỉ số cột)
+    X_df = pd.DataFrame(X_arr)
     vif_data = pd.DataFrame()
     vif_data["Feature"] = X_df.columns
     vif_data["VIF_Score"] = vif_values
@@ -211,7 +220,6 @@ def gauss_markov_simulation(n_simulations=1000, n_samples=100):
     - Tính BLUE: Var(beta_OLS) < Var(beta_Alternative)
     """
     # khởi tạo ma trận X cố định và beta thực
-    # X có 1 cột bias và 2 cột đặc trưng ngẫu nhiên
     random.seed(42)
     p = 2
     X = [[1.0, random.uniform(0, 10), random.uniform(-5, 5)] for _ in range(n_samples)]
@@ -221,7 +229,6 @@ def gauss_markov_simulation(n_simulations=1000, n_samples=100):
     # tiền tính toán ma trận ánh xạ cho OLS (100% data)
     X_T = mat_transpose(X)
     X_T_X_inv = inverse(mat_mul(X_T, X))
-    # C_ols = (X^T X)^-1 X^T
     C_ols = mat_mul(X_T_X_inv, X_T)
 
     # tiền tính toán ma trận ánh xạ cho Alternative Estimator (60% data)
@@ -231,64 +238,35 @@ def gauss_markov_simulation(n_simulations=1000, n_samples=100):
     X_alt_T_X_alt_inv = inverse(mat_mul(X_alt_T, X_alt))
     C_alt = mat_mul(X_alt_T_X_alt_inv, X_alt_T)
 
-    # lưu trữ kết quả của 1000 vòng lặp
     beta_ols_results = {j: [] for j in range(k)}
     beta_alt_results = {j: [] for j in range(k)}
 
-    # VÒNG LẶP MONTE CARLO
     for _ in range(n_simulations):
-        # tạo nhiễu e ~ N(0, sigma^2)
         sigma = 2.0
         e = [random.gauss(0, sigma) for _ in range(n_samples)]
-
-        # sinh biến mục tiêu y = X*beta + e
         y = [
             sum(X[i][j] * true_beta[j] for j in range(k)) + e[i]
             for i in range(n_samples)
         ]
-
         beta_ols = matrix_vector_multiply(C_ols, y)
         beta_alt = matrix_vector_multiply(C_alt, y[:n_alt])
-
-        # Lưu kết quả
         for j in range(k):
             beta_ols_results[j].append(beta_ols[j])
             beta_alt_results[j].append(beta_alt[j])
 
-    # thống kê
     report = []
     for j in range(k):
-        # E[beta_hat]
         e_ols = sum(beta_ols_results[j]) / n_simulations
         e_alt = sum(beta_alt_results[j]) / n_simulations
-
-        # Var(beta_hat)
-        var_ols = sum((b - e_ols) ** 2 for b in beta_ols_results[j]) / (
-            n_simulations - 1
-        )
-        var_alt = sum((b - e_alt) ** 2 for b in beta_alt_results[j]) / (
-            n_simulations - 1
-        )
-
-        report.append(
-            {
-                "beta_idx": j,
-                "true_val": true_beta[j],
-                "E_ols": e_ols,
-                "E_alt": e_alt,
-                "Var_ols": var_ols,
-                "Var_alt": var_alt,
-            }
-        )
+        var_ols = sum((b - e_ols) ** 2 for b in beta_ols_results[j]) / (n_simulations - 1)
+        var_alt = sum((b - e_alt) ** 2 for b in beta_alt_results[j]) / (n_simulations - 1)
+        report.append({
+            "beta_idx": j,
+            "true_val": true_beta[j],
+            "E_ols": e_ols,
+            "E_alt": e_alt,
+            "Var_ols": var_ols,
+            "Var_alt": var_alt,
+        })
 
     return report
-                "true_val": true_beta[j],
-                "E_ols": e_ols,
-                "E_alt": e_alt,
-                "Var_ols": var_ols,
-                "Var_alt": var_alt,
-            }
-        )
-
-    return report
-n report
