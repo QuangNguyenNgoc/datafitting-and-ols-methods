@@ -24,7 +24,7 @@ from utils.matrix_utils import (
 )
 from utils.inverse import inverse
 
-from part1.utils_verif import _student_t_sf, _student_t_ppf
+from part1.utils_verif import _student_t_sf, _student_t_ppf, _f_sf_paulson
 
 
 def ols_fit(X, y):
@@ -53,7 +53,6 @@ def hat_matrix(X):
 
 def model_metrics(y: list, y_hat: list, p: int) -> dict:
     """
-    Tính các độ đo tổng hợp mô hình bằng 100% Python gốc:
     - RSS (Residual Sum of Squares)
     - TSS (Total Sum of Squares)
     - R^2 (Hệ số xác định)
@@ -88,12 +87,21 @@ def model_metrics(y: list, y_hat: list, p: int) -> dict:
         adj_r2 = float("nan")
         f_statistic = float("nan")
 
+    # p-value
+    df_model = p
+    df_resid = n - p - 1
+    # Tính F-stat
+    f_stat = ((tss - rss) / df_model) / (rss / df_resid) if rss > 0 else 0.0
+
+    p_value = _f_sf_paulson(f_stat, df_model, df_resid)
+
     return {
         "RSS": rss,
         "TSS": tss,
         "R2": r2,
         "Adj_R2": adj_r2,
         "F_statistic": f_statistic,
+        "p_value": p_value,
     }
 
 
@@ -128,7 +136,7 @@ def coef_inference(X: list, y: list, beta_hat: list, sigma2: float) -> pd.DataFr
     p_values = [2.0 * _student_t_sf(abs(t_stats[i]), df) for i in range(k)]
 
     # khoảng tin cậy 95%
-    t_critical = _student_t_ppf(0.975, df)
+    t_critical = _student_t_ppf(df)
     ci_lower = [beta_list[i] - t_critical * se[i] for i in range(k)]
     ci_upper = [beta_list[i] + t_critical * se[i] for i in range(k)]
 
