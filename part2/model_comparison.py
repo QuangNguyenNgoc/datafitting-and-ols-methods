@@ -393,8 +393,6 @@ def _vif_table(
         df = vif_scores.copy()
         if "VIF_Score" not in df.columns and len(df.columns) >= 2:
             df = df.rename(columns={df.columns[-1]: "VIF_Score"})
-        if "VIF" not in df.columns and "VIF_Score" in df.columns:
-            df["VIF"] = df["VIF_Score"]
         if len(df) == len(names):
             df["Feature"] = names
         return df.sort_values("VIF_Score", ascending=False).reset_index(drop=True)
@@ -406,13 +404,11 @@ def _vif_table(
         and len(vif_scores[0]) >= 2
     ):
         df = pd.DataFrame(vif_scores, columns=["Feature", "VIF_Score"])
-        df["VIF"] = df["VIF_Score"]
         if len(df) == len(names):
             df["Feature"] = names
         return df.sort_values("VIF_Score", ascending=False).reset_index(drop=True)
 
     df = pd.DataFrame({"Feature": names, "VIF_Score": _to_list(vif_scores)})
-    df["VIF"] = df["VIF_Score"]
     return df.sort_values("VIF_Score", ascending=False).reset_index(drop=True)
 
 
