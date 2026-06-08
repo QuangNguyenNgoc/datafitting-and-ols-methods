@@ -1,13 +1,13 @@
 = Phụ lục
 
-== Bảng kiểm định Đa cộng tuyến (VIF)
+== Bảng phân tích nhân tử phóng đại phương sai
 
-Dưới đây là bảng kết quả đo lường chỉ số VIF từ `DataPipeline` tại Trạm kiểm soát số 2 (Sync Point 2), cung cấp bằng chứng toán học để đưa ra quyết định loại bỏ các cột `BuildingArea_per_Room` và `Bedroom2`.
+Dưới đây là kết quả đo lường chỉ số nhân tử phóng đại phương sai từ quy trình tiền xử lý tại thời điểm đánh giá và loại bỏ các biến số tương quan mạnh, làm cơ sở toán học để loại bỏ các cột `BuildingArea_per_Room` và `Bedroom2`.
 
 #table(
   columns: (auto, auto, auto),
   align: (left, center, center),
-  [*Tên Đặc trưng*], [*Chỉ số Cột*], [*Điểm VIF*],
+  [*Tên đặc trưng*], [*Chỉ số cột*], [*Điểm VIF*],
   [`Rooms`], [0], [10.50],
   [`Distance`], [1], [2.16],
   [`Bedroom2`], [2], [8.88],
@@ -35,31 +35,31 @@ Dưới đây là bảng kết quả đo lường chỉ số VIF từ `DataPipel
   [`Regionname_Western Victoria`], [24], [1.39],
 )
 
-Việc phát hiện và loại bỏ các biến có VIF > 5.0 (đặc biệt là các cặp tỷ lệ thuận như Tổng diện tích và Diện tích mỗi phòng) đã đóng vai trò sống còn trong việc bảo vệ tính khả nghịch của ma trận $X^T X$.
+Việc phát hiện và loại bỏ các biến có nhân tử phóng đại phương sai vượt quá ngưỡng 5.0 (đặc biệt là các cặp biến tỷ lệ nghịch hoặc đồng dạng như diện tích xây dựng và diện tích mỗi phòng) đóng vai trò quyết định trong việc bảo toàn hạng cột và tránh hiện tượng suy biến của ma trận $X^T X$.
 
-== Chứng minh Toán học Mô hình Ridge Regression
+== Chứng minh toán học cho mô hình hồi quy ridge
 
-Ở Phần 1, nhóm đã trình bày nghiệm đóng của Ordinary Least Squares (OLS). Để mở rộng, phần này trình bày chứng minh toán học của phương pháp Ridge (phương pháp được sử dụng ở Phần 2) nhằm giải quyết triệt để tính bất định của ma trận $X^T X$ khi có đa cộng tuyến.
+Nghiệm đóng của phương pháp hồi quy tuyến tính thông thường đã được xây dựng từ trước. Để mở rộng khả năng kiểm soát phương sai sai số, phần này trình bày chứng minh toán học cho phương pháp hồi quy ridge để giải quyết triệt để tính bất định của ma trận hồi quy khi xảy ra hiện tượng đa cộng tuyến.
 
-Hàm mục tiêu của Ridge Regression bổ sung thêm thành phần phạt L2 ($lambda$):
+Hàm mục tiêu của hồi quy ridge bổ sung thêm thành phần phạt bậc hai theo chuẩn l2 với tham số phạt $lambda$:
 $ L(beta) = (y - X beta)^T (y - X beta) + lambda beta^T beta $
 
-Tiến hành lấy đạo hàm bậc 1 theo vector $beta$ và cho bằng vector 0:
+Lấy đạo hàm bậc nhất theo vector hệ số $beta$ và cho bằng vector 0:
 $ (partial L(beta)) / (partial beta) = -2 X^T (y - X beta) + 2 lambda beta = 0 $
 
-Triển khai và triệt tiêu hằng số 2:
+Thu gọn và loại bỏ hằng số 2:
 $ X^T (y - X beta) = lambda beta $
 
-Phân phối ma trận $X^T$:
+Khai triển ma trận:
 $ X^T y - X^T X beta = lambda beta $
 
-Chuyển vế chứa $beta$ sang một bên:
+Chuyển các số hạng chứa hệ số $beta$ sang một vế:
 $ X^T X beta + lambda beta = X^T y $
 
-Rút $beta$ làm nhân tử chung (với $I$ là ma trận đơn vị cùng cấp):
+Sử dụng ma trận đơn vị $I$ để đưa hệ số $beta$ làm nhân tử chung:
 $ (X^T X + lambda I) beta = X^T y $
 
-Nhân nghịch đảo hai vế, ta thu được nghiệm đóng (closed-form solution) của Ridge:
+Nhân nghịch đảo hai vế, nghiệm đóng của hồi quy ridge thu được là:
 $ hat(beta)_"ridge" = (X^T X + lambda I)^(-1) X^T y $
 
-*Ý nghĩa toán học:* Ma trận $(X^T X)$ có thể bị suy biến (định thức xấp xỉ 0) nếu có đa cộng tuyến. Việc cộng thêm ma trận đường chéo $lambda I$ giúp ép tất cả các trị riêng (eigenvalues) của ma trận này lớn hơn 0, đảm bảo nó luôn tồn tại ma trận nghịch đảo. Điều này giải thích tại sao Ridge Regression có khả năng xử lý hiện tượng Over-fitting và đa cộng tuyến cực kỳ mạnh mẽ.
+Ý nghĩa toán học: Ma trận xuyên suốt $(X^T X)$ có thể rơi vào trạng thái gần suy biến với định thức xấp xỉ 0 khi xuất hiện đa cộng tuyến. Việc cộng thêm ma trận đường chéo $lambda I$ giúp dịch chuyển tất cả các trị riêng của ma trận tổng lên một khoảng tối thiểu bằng $lambda > 0$, đảm bảo ma trận thu được luôn khả nghịch số học. Điều này giải thích khả năng kiểm soát hiện tượng quá khớp và đa cộng tuyến của phương pháp hồi quy ridge.
