@@ -12,8 +12,6 @@ import numpy as np
 import scipy.stats as stats
 import pandas as pd
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-import statsmodels.api as sm
-from statsmodels.stats.outliers_influence import variance_inflation_factor
 
 from utils.matrix_utils import (
     mat_transpose,
@@ -29,26 +27,41 @@ from part1.utils_verif import _student_t_sf, _student_t_ppf
 
 def ols_fit(X, y):
     """
-    1. Tính vector hệ số beta_hat và phương sai sai số sigma2_hat.
+    1. Tính vector hệ số beta_hat bằng phương pháp bình phương tối thiểu (OLS).
 
     Công thức toán học:
         beta_hat = (X^T X)^{-1} X^T y
-        sigma2_hat = RSS / (n - p)
+
+    Cài đặt: dùng np.linalg.lstsq (giải qua SVD) để ổn định số,
+    tránh trường hợp X^T X gần singular.
     """
-    model = sm.OLS(y, X).fit()
-    return np.array(model.params)
+    X_mat = np.array(X, dtype=float)
+    y_vec = np.array(y, dtype=float).flatten()
+    # lstsq giải hệ bình phương tối thiểu: argmin ||X beta - y||^2
+    beta_hat, _, _, _ = np.linalg.lstsq(X_mat, y_vec, rcond=None)
+    return beta_hat
 
 
 def hat_matrix(X):
     """
-    2. Tính ma trận chiếu H (Hat matrix) và kiểm tra tính lũy đẳng (idempotent).
+    2. Tính ma trận chiếu H (Hat matrix) bằng Economic SVD.
 
     Công thức toán học:
-        H = X(X^T X)^{-1} X^T
+        H = X(X^T X)^{-1} X^T = U U^T   (với X = U S V^T, dạng economic SVD)
+
+    Lý do dùng SVD: tránh tràn bộ nhớ với ma trận lớn;
+    chỉ cần U là ma trận trực giao (n x r) với r = rank(X).
     Điều kiện lũy đẳng: H @ H = H
     """
-    X_mat = np.array(X)
-    return X_mat @ np.linalg.pinv(X_mat)
+    X_mat = np.array(X, dtype=float)
+    # Economic SVD: U có shape (n, r), S có shape (r,), Vt có shape (r, p)
+    U, s, Vt = np.linalg.svd(X_mat, full_matrices=False)
+    # Xác định rank số trị thực (loại singular values xấp xỉ 0)
+    tol = np.finfo(float).eps * max(X_mat.shape) * s[0]
+    rank = int(np.sum(s > tol))
+    U_r = U[:, :rank]
+    # H = U_r @ U_r^T
+    return U_r @ U_r.T
 
 
 def model_metrics(y: list, y_hat: list, p: int) -> dict:
@@ -88,12 +101,18 @@ def model_metrics(y: list, y_hat: list, p: int) -> dict:
         adj_r2 = float("nan")
         f_statistic = float("nan")
 
+    # MAE và RMSE (bổ sung để tương thích với report generator)
+    mae = sum(abs(e_i) for e_i in e) / n if n > 0 else 0.0
+    rmse = math.sqrt(rss / n) if n > 0 else 0.0
+
     return {
         "RSS": rss,
         "TSS": tss,
         "R2": r2,
         "Adj_R2": adj_r2,
         "F_statistic": f_statistic,
+        "MAE": mae,
+        "RMSE": rmse,
     }
 
 
@@ -152,19 +171,35 @@ def vif(X):
        để kiểm tra hiện tượng đa cộng tuyến.
 
     Công thức: VIF_j = 1 / (1 - R^2_j)
+    Trong đó R^2_j là R^2 của hồi quy phụ: X_j ~ X_{-j} (hồi quy X cột j lên tất cả cột còn lại).
+
+    Cài đặt from-scratch bằng NumPy, không dùng statsmodels/sklearn.
     """
-    X_df = pd.DataFrame(X)
-    vif_data = pd.DataFrame()
-    vif_data["Feature"] = X_df.columns
+    X_mat = np.array(X, dtype=float)
+    n, p = X_mat.shape
 
     vif_values = []
-    for i in range(X_df.shape[1]):
-        try:
-            val = variance_inflation_factor(X_df.values, i)
-        except Exception:
-            val = np.inf
-        vif_values.append(val)
+    for j in range(p):
+        # Hồi quy phụ: X[:, j] ~ X[:, -j] (tất cả cột trừ cột j)
+        X_other = np.delete(X_mat, j, axis=1)
+        beta_j, _, _, _ = np.linalg.lstsq(X_other, X_mat[:, j], rcond=None)
+        y_hat_j = X_other @ beta_j
 
+        # Tính R^2_j
+        ss_res = np.sum((X_mat[:, j] - y_hat_j) ** 2)
+        ss_tot = np.sum((X_mat[:, j] - np.mean(X_mat[:, j])) ** 2)
+
+        if ss_tot == 0.0:
+            vif_j = np.inf
+        else:
+            r2_j = 1.0 - ss_res / ss_tot
+            vif_j = 1.0 / (1.0 - r2_j) if r2_j < 1.0 else np.inf
+
+        vif_values.append(vif_j)
+
+    X_df = pd.DataFrame(X_mat)
+    vif_data = pd.DataFrame()
+    vif_data["Feature"] = X_df.columns
     vif_data["VIF_Score"] = vif_values
     return vif_data
 
@@ -247,3 +282,13 @@ def gauss_markov_simulation(n_simulations=1000, n_samples=100):
         )
 
     return report
+                "true_val": true_beta[j],
+                "E_ols": e_ols,
+                "E_alt": e_alt,
+                "Var_ols": var_ols,
+                "Var_alt": var_alt,
+            }
+        )
+
+    return report
+n report
