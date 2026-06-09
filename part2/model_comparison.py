@@ -63,15 +63,12 @@ def compute_metrics(y_true: list, y_pred: list) -> dict:
     if n != len(y_pred):
         raise ValueError("y_true và y_pred phải có cùng độ dài.")
 
-    # 1. Gọi hàm Part 1 (Truyền tạm p=1 vì ở đây ta chỉ lấy R2 và RSS, không lấy Adj_R2)
     p1_metrics = model_metrics(y_true, y_pred, p=1)
     r2 = p1_metrics["R2"]
     rss = p1_metrics["RSS"]
 
-    # 2. Tính RMSE từ RSS
     rmse = math.sqrt(rss / n) if n > 0 else 0.0
 
-    # 3. Tính MAE bằng vòng lặp thuần
     sum_abs_err = sum(abs(yt - yp) for yt, yp in zip(y_true, y_pred))
     mae = sum_abs_err / n if n > 0 else 0.0
 
@@ -131,10 +128,8 @@ def _fit_custom_ols(
     X_train_design = _add_intercept(X_train)
     X_test_design = _add_intercept(X_test)
 
-    # 1. Gọi hàm học OLS từ Part 1
     beta, _ = custom_ols_func(X_train_design, y_train)
 
-    # 2. Tính y_pred bằng vòng lặp List thuần (Thay thế cho X @ beta của NumPy)
     y_train_pred = [sum(x * b for x, b in zip(row, beta)) for row in X_train_design]
     y_test_pred = [sum(x * b for x, b in zip(row, beta)) for row in X_test_design]
 
@@ -416,7 +411,7 @@ def _train_kernel_ridge(
     n_train = len(X_train)
     sample_size = min(sample_size, n_train)
 
-    # Lấy mẫu ngẫu nhiên không hoàn lại bằng Python list
+    # Lấy mẫu ngẫu nhiên không hoàn lại
     if sample_size < n_train:
         train_idx = random.sample(range(n_train), sample_size)
         X_fit = [X_train[i] for i in train_idx]
@@ -464,56 +459,6 @@ def _train_bayesian_linear(
         best_params=bayesian_params,
         source="advanced_methods",
     )
-
-
-def _vif_table_legacy_unused(
-    X_list: list, feature_names: list | None = None
-) -> pd.DataFrame:
-    X_list = _to_list(X_list)
-    names = feature_names or [f"x{i}" for i in range(len(X_list[0]))]
-
-    vif_scores = vif(X_list)
-
-    df = pd.DataFrame({"Feature": names, "VIF_Score": vif_scores})
-    return df.sort_values("VIF_Score", ascending=False).reset_index(drop=True)
-
-
-def run_diagnostics_legacy_unused(
-    X: list,
-    y: list,
-    feature_names: list | None = None,
-) -> dict:
-    X_list = _to_list(X)
-    y_list = _to_list(y)
-    names = feature_names or [f"x{i}" for i in range(len(X_list[0]))]
-    X_design = _add_intercept(X_list)
-
-    # Tính Beta
-    beta, _ = ols_fit(X_design, y_list)
-
-    # Tính Dự đoán & Phần dư bằng List Comprehension
-    fitted = [sum(x_val * b for x_val, b in zip(row, beta)) for row in X_design]
-    residuals = [y_i - y_hat_i for y_i, y_hat_i in zip(y_list, fitted)]
-
-    # Tính Phương sai sai số (sigma2)
-    rss = sum(r**2 for r in residuals)
-    dof = max(len(X_design) - len(X_design[0]), 1)
-    sigma2 = rss / dof
-
-    # Bảng suy diễn thống kê (T-test)
-    inference_df = coef_inference(X_design, y_list, beta, sigma2).copy()
-    expected_names = ["Intercept"] + names
-    if len(inference_df) == len(expected_names):
-        inference_df.insert(0, "Feature", expected_names)
-
-    return {
-        "coefficients": beta,
-        "predictions_train": fitted,
-        "residuals_train": residuals,
-        "sigma2": float(sigma2),
-        "VIF": _vif_table(X_list, feature_names=names),
-        "coef_inference": inference_df,
-    }
 
 
 def _vif_table(
