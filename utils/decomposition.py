@@ -68,10 +68,12 @@ def svd_decomp(A: Sequence[Sequence[Number]]) -> Tuple[Matrix, Matrix, Matrix]:
 
     V = mat_transpose(ortho_V)
 
+    # Economic SVD: Sigma is m x n with diagonal values
     Sigma: Matrix = [[0.0] * n for _ in range(m)]
     for i in range(min(m, n)):
         Sigma[i][i] = sigma_vals[i]
 
+    # Compute left singular vectors U: only compute for the r=min(m,n) singular values
     cols_U: List[Vector] = []
     for i in range(min(m, n)):
         if sigma_vals[i] > _EPS:
@@ -79,13 +81,9 @@ def svd_decomp(A: Sequence[Sequence[Number]]) -> Tuple[Matrix, Matrix, Matrix]:
             Avi = mat_mul(mat, vi)
             cols_U.append([Avi[j][0] / sigma_vals[i] for j in range(m)])
 
-    for i in range(m):
-        if len(cols_U) >= m:
-            break
-        e = [1.0 if j == i else 0.0 for j in range(m)]
-        extended = _gram_schmidt(cols_U + [e])
-        if len(extended) > len(cols_U):
-            cols_U = extended
+    # For economic SVD, U is m x r (where r = len(cols_U) = number of nonzero singular values)
+    # Do NOT try to extend cols_U to full m x m, as this causes numerical instability
+    # The remaining columns of U (if m > r) are not needed for OLS computation
 
     U = mat_transpose(cols_U)
     V_T = mat_transpose(V)

@@ -51,19 +51,27 @@ def ols_fit(X, y):
     r = len(s)
 
     # Bước 1 & 2 & 3: Tính beta_hat bằng SVD
+    tol = max(s) * 1e-12
     Ut_y = [sum(U[j][i] * y_list[j] for j in range(m)) for i in range(r)]
-    sp_Uty = [Ut_y[i] / s[i] if s[i] > _EPS else 0.0 for i in range(r)]
+    sp_Uty = [Ut_y[i] / s[i] if s[i] > tol else 0.0 for i in range(r)]
     beta = [sum(V_T[i][j] * sp_Uty[i] for i in range(r)) for j in range(n)]
 
     # Bước 4: Tính y_hat = X * beta
-    y_hat = []
-    for i in range(n_samples):
-        val = sum(X_list[i][j] * beta[j] for j in range(n_features))
-        y_hat.append(val)
+    y_hat = [
+        sum(X_list[i][j] * beta[j] for j in range(n_features)) for i in range(n_samples)
+    ]
 
     # Bước 5: Tính RSS và sigma^2
     rss = sum((y_list[i] - y_hat[i]) ** 2 for i in range(n_samples))
-    sigma2 = rss / (n_samples - n_features) if n_samples > n_features else 0.0
+
+    # Đếm số lượng singular values thực sự được dùng (lớn hơn ngưỡng epsilon)
+    # số bậc tự do hiệu dụng
+    effective_rank = sum(1 for val in s if val > tol)
+
+    if n_samples > effective_rank and effective_rank > 0:
+        sigma2 = rss / (n_samples - effective_rank)
+    else:
+        sigma2 = 0.0
 
     return beta, sigma2
 
@@ -90,19 +98,17 @@ def hat_matrix(X: list[list[float]]) -> list[list[float]]:
     # Phân rã SVD
     U, Sigma, _ = svd_decomp(X_list)
     k = min(len(Sigma), len(Sigma[0]))
-    s = [Sigma[i][i] for i in range(k)]
+    s = [Sigma[i][i] for i in range(min(len(Sigma), len(Sigma[0])))]
+    tol = max(s) * 1e-12
+    # Chỉ lấy các cột U tương ứng với s_i > tol
+    U_effective = [
+        [U[i][j] for j in range(len(s)) if s[j] > tol] for i in range(len(U))
+    ]
 
     m = len(U)
 
     # Khởi tạo ma trận H kích thước m x m với toàn số 0.0
-    H = [[0.0] * m for _ in range(m)]
-
-    # Tính H = sum_{col: s[col] > EPS} u_col u_col^T
-    for col in range(k):
-        if s[col] > _EPS:
-            for a in range(m):
-                for b in range(m):
-                    H[a][b] += U[a][col] * U[b][col]
+    H = mat_mul(U_effective, mat_transpose(U_effective))
 
     # ==== kiểm tra idempotent ====
     is_idempotent = True
@@ -266,34 +272,61 @@ def vif(X):
     if feature_names is None:
         feature_names = [f"Feature_{i}" for i in range(p)]
 
-    vif_values = []
-    for j in range(p):
-        y_j = [X_list[i][j] for i in range(n)]
-        other_cols = [c for c in range(p) if c != j]
+    if n == 0 or p == 0:
+        return pd.DataFrame({"Feature": feature_names, "VIF_Score": []})
 
-        # Thêm hệ số chặn [1.0] vào đặc trưng
-        X_j_list = [[1.0] + [X_list[i][c] for c in other_cols] for i in range(n)]
+    # Center columns so the intercept is handled implicitly in the covariance structure.
+    col_means = [sum(X_list[i][j] for i in range(n)) / n for j in range(p)]
+    X_centered = [[X_list[i][j] - col_means[j] for j in range(p)] for i in range(n)]
 
-        try:
-            beta_j, _ = ols_fit(X_j_list, y_j)
+    Xt = mat_transpose(X_centered)
+    cov = mat_mul(Xt, X_centered)
 
-            y_hat_j = [
-                sum(X_j_list[i][c] * beta_j[c] for c in range(len(beta_j)))
-                for i in range(n)
+    try:
+        std_devs = [math.sqrt(cov[j][j]) for j in range(p)]
+        corr = [
+            [
+                (
+                    cov[i][j] / (std_devs[i] * std_devs[j])
+                    if std_devs[i] > 0 and std_devs[j] > 0
+                    else 0.0
+                )
+                for j in range(p)
             ]
+            for i in range(p)
+        ]
+        corr_inv = inverse(corr)
 
-            y_mean_j = sum(y_j) / n
-            ss_res = sum((y_j[i] - y_hat_j[i]) ** 2 for i in range(n))
-            ss_tot = sum((y_j[i] - y_mean_j) ** 2 for i in range(n))
+        vif_values = []
+        for j in range(p):
+            if std_devs[j] <= 1e-12:
+                vif_values.append(float("inf"))
+            else:
+                vif_values.append(corr_inv[j][j])
 
-            r2_j = 1.0 - ss_res / ss_tot if ss_tot > 1e-12 else 0.0
-            vif_j = 1.0 / (1.0 - r2_j) if (1.0 - r2_j) > 1e-12 else float("inf")
+    except Exception:
+        # Fallback về phương pháp OLS truyền thống nếu ma trận tương quan suy biến
+        vif_values = []
+        for j in range(p):
+            y_j = [X_list[i][j] for i in range(n)]
+            other_cols = [c for c in range(p) if c != j]
 
-        except Exception:
-            # ma trận suy biến
-            vif_j = float("inf")
+            X_j_list = [[1.0] + [X_list[i][c] for c in other_cols] for i in range(n)]
 
-        vif_values.append(vif_j)
+            try:
+                beta_j, _ = ols_fit(X_j_list, y_j)
+                y_hat_j = [
+                    sum(X_j_list[i][c] * beta_j[c] for c in range(len(beta_j)))
+                    for i in range(n)
+                ]
+                y_mean_j = sum(y_j) / n
+                ss_res = sum((y_j[i] - y_hat_j[i]) ** 2 for i in range(n))
+                ss_tot = sum((y_j[i] - y_mean_j) ** 2 for i in range(n))
+                r2_j = 1.0 - ss_res / ss_tot if ss_tot > 1e-12 else 0.0
+                vif_j = 1.0 / (1.0 - r2_j) if (1.0 - r2_j) > 1e-12 else float("inf")
+            except Exception:
+                vif_j = float("inf")
+            vif_values.append(vif_j)
 
     vif_data = pd.DataFrame(
         {

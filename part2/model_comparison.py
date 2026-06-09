@@ -131,7 +131,7 @@ def _fit_custom_ols(
     X_test_design = _add_intercept(X_test)
 
     # 1. Gọi hàm học OLS từ Part 1
-    beta = custom_ols_func(X_train_design, y_train)
+    beta, _ = custom_ols_func(X_train_design, y_train)
 
     # 2. Tính y_pred bằng vòng lặp List thuần (Thay thế cho X @ beta của NumPy)
     y_train_pred = [sum(x * b for x, b in zip(row, beta)) for row in X_train_design]
@@ -574,7 +574,12 @@ def run_diagnostics(
     ols_func = custom_ols_func or ols_fit
     inference_func = custom_inference_func or coef_inference
 
-    beta = ols_func(X_design, y_list)
+    ols_result = ols_func(X_design, y_list)
+    # Handle both tuple (beta, sigma2) and plain beta returns
+    if isinstance(ols_result, tuple):
+        beta, _ = ols_result
+    else:
+        beta = ols_result
     fitted = [sum(x_val * b for x_val, b in zip(row, beta)) for row in X_design]
     residuals = [y_i - y_hat_i for y_i, y_hat_i in zip(y_list, fitted)]
 
