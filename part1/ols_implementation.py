@@ -68,7 +68,7 @@ def ols_fit(X, y):
     return beta, sigma2
 
 
-def hat_matrix(X):
+def hat_matrix(X: list[list[float]]) -> list[list[float]]:
     """
     2. Tính ma trận chiếu H (Hat matrix).
 
@@ -86,21 +86,24 @@ def hat_matrix(X):
     """
     X_list = [[float(v) for v in row] for row in X]
 
+    # Phân rã SVD
     U, Sigma, _ = svd_decomp(X_list)
     k = min(len(Sigma), len(Sigma[0]))
     s = [Sigma[i][i] for i in range(k)]
 
     m = len(U)
 
-    # H = sum_{col: s[col] > EPS} u_col u_col^T
+    # Khởi tạo ma trận H kích thước m x m với toàn số 0.0
     H = [[0.0] * m for _ in range(m)]
+
+    # Tính H = sum_{col: s[col] > EPS} u_col u_col^T
     for col in range(k):
         if s[col] > _EPS:
             for a in range(m):
                 for b in range(m):
                     H[a][b] += U[a][col] * U[b][col]
 
-    return np.array(H, dtype=float)
+    return H
 
 
 def model_metrics(y: list, y_hat: list, p: int) -> dict:
