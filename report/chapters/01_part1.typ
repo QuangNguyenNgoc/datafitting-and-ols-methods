@@ -11,8 +11,9 @@ Trong đó, $H = X(X^T X)^(-1)X^T$ được gọi là Ma trận chiếu (Hat mat
 
 Định lý toán học chứng minh $H$ có 2 tính chất vô cùng quan trọng:
 - *Tính đối xứng:* $ H^T = (X (X^T X)^(-1) X^T)^T = X ((X^T X)^(-1))^T X^T = X (X^T X)^(-1) X^T = H $
-- *Tính lũy đẳng (Idempotent):* $ H^2 = H H = X(X^T X)^(-1)X^T X(X^T X)^(-1)X^T = X(X^T X)^(-1) (X^T X) (X^T X)^(-1) X^T = X(X^T X)^(-1)X^T = H $ 
-Ta có vector phần dư $e = y - hat(y) = (I - H)y$. \
+- *Tính lũy đẳng (Idempotent):* $ H^2 &= H H = X(X^T X)^(-1)X^T X(X^T X)^(-1)X^T \ &= X(X^T X)^(-1) (X^T X) (X^T X)^(-1) X^T = X(X^T X)^(-1)X^T = H $
+*b. Vector phần dư và hệ quả* \
+- Ta có vector phần dư $e = y - hat(y) = (I - H)y$. \
 *Chứng minh tính trực giao:* Phần dư luôn trực giao với không gian sinh bởi ma trận thiết kế $X$:
 $ X^T e = X^T (I - H) y = (X^T - X^T X (X^T X)^(-1) X^T) y = (X^T - X^T) y = 0 $
 *Hệ quả:*
