@@ -24,15 +24,9 @@ Thu được phương trình chuẩn:
 
 $ X^T X hat(beta) = X^T y $
 
-#block(
-  fill: luma(240),
-  inset: 10pt,
-  radius: 4pt,
-)[
 Định lý: Khi $X^T X$ khả nghịch (tức các cột của $X$ độc lập tuyến tính), nghiệm duy nhất là:
 
 $ hat(beta) = (X^T X)^(-1) X^T y $
-]
 
 Đây là ước lượng tuyến tính không chệch tốt nhất (BLUE) theo Định lý Gauss–Markov.
 
@@ -95,14 +89,8 @@ Lấy đạo hàm và đặt bằng 0:
 $ -2 X^T (y - X beta) + 2 lambda beta = 0 $
 $ (X^T X + lambda I) beta = X^T y $
 
-#block(
-  fill: luma(240),
-  inset: 10pt,
-  radius: 4pt,
-)[
 Nghiệm Ridge:
 $ hat(beta)_"ridge" = (X^T X + lambda I)^(-1) X^T y $
-]
 
 Ma trận $(X^T X + lambda I)$ luôn khả nghịch với $lambda > 0$ vì tất cả trị riêng của $X^T X + lambda I$ đều $>= lambda > 0$. Khi $lambda = 0$, thu về OLS. Khi $lambda -> infinity$, $hat(beta)_"ridge" -> 0$.
 
