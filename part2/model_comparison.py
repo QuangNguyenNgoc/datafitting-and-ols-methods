@@ -17,6 +17,7 @@ from typing import Any, Callable, Dict
 import matplotlib.pyplot as plt
 import pandas as pd
 import math
+from utils.matrix_utils import mat_transpose, mat_mul, matrix_vector_multiply
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -28,7 +29,7 @@ except Exception:
     from advanced_methods import BayesianLinearRegression, kernel_ridge_fit
 
 from part1.ols_implementation import ols_fit, coef_inference, vif, model_metrics
-from part1.ridge_lasso import ridge_fit
+from part1.ridge_lasso import _ridge_fit_precomputed, ridge_fit
 from part1.cross_validation import kfold_cv
 
 custom_ridge_fit = ridge_fit
@@ -905,23 +906,27 @@ def hyperparameter_tuning(
     best_rmse = float("inf")
     cv_results = []
 
-    for lam in lambda_values:
-        mse_scores = []
+    mse_sums = [0.0 for _ in lambda_values]
 
-        for i in range(k):
-            val_start = i * fold_size
-            val_end = n if i == k - 1 else (i + 1) * fold_size
+    for i in range(k):
+        val_start = i * fold_size
+        val_end = n if i == k - 1 else (i + 1) * fold_size
 
-            X_val = X_train[val_start:val_end]
-            y_val = y_train[val_start:val_end]
+        X_val = X_train[val_start:val_end]
+        y_val = y_train[val_start:val_end]
 
-            X_tr = X_train[:val_start] + X_train[val_end:]
-            y_tr = y_train[:val_start] + y_train[val_end:]
+        X_tr = X_train[:val_start] + X_train[val_end:]
+        y_tr = y_train[:val_start] + y_train[val_end:]
 
-            X_tr_design = _add_intercept(X_tr)
-            X_val_design = _add_intercept(X_val)
+        X_tr_design = _add_intercept(X_tr)
+        X_val_design = _add_intercept(X_val)
 
-            beta_hat = ridge_fit(X_tr_design, y_tr, lam)
+        X_T = mat_transpose(X_tr_design)
+        X_T_X = mat_mul(X_T, X_tr_design)
+        X_T_y = matrix_vector_multiply(X_T, y_tr)
+
+        for idx, lam in enumerate(lambda_values):
+            beta_hat = _ridge_fit_precomputed(X_T_X, X_T_y, lam)
 
             y_pred = [
                 sum(x_ij * b_j for x_ij, b_j in zip(row, beta_hat))
@@ -929,9 +934,10 @@ def hyperparameter_tuning(
             ]
 
             mse = sum((y_v - y_p) ** 2 for y_v, y_p in zip(y_val, y_pred)) / len(y_val)
-            mse_scores.append(mse)
+            mse_sums[idx] += mse
 
-        mean_rmse = math.sqrt(sum(mse_scores) / k)
+    for idx, lam in enumerate(lambda_values):
+        mean_rmse = math.sqrt(mse_sums[idx] / k)
         cv_results.append({"lambda": float(lam), "cv_rmse": float(mean_rmse)})
 
         if mean_rmse < best_rmse:
