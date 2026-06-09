@@ -1,12 +1,8 @@
 from __future__ import annotations
 
 from typing import Any, Dict, List, Sequence
-try:
-    from .matrix_utils import Number, Vector, _to_matrix, _shape
-    from .gaussian import _rref
-except ImportError:
-    from matrix_utils import Number, Vector, _to_matrix, _shape
-    from gaussian import _rref
+from .matrix_utils import Number, Vector, _to_matrix, _shape
+from .gaussian import _rref
 
 """
 Tính hạng ma trận và các cơ sở liên quan.

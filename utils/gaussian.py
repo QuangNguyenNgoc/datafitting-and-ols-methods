@@ -2,32 +2,18 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Sequence, Tuple
 
-try:
-    from .matrix_utils import (
-        Matrix,
-        Number,
-        Vector,
-        _shape,
-        _to_matrix,
-        _to_vector,
-        _augment,
-        _clean_small_entries,
-        _copy_matrix,
-        _swap_rows,
-    )
-except ImportError:
-    from matrix_utils import (
-        Matrix,
-        Number,
-        Vector,
-        _shape,
-        _to_matrix,
-        _to_vector,
-        _augment,
-        _clean_small_entries,
-        _copy_matrix,
-        _swap_rows,
-    )
+from .matrix_utils import (
+    Matrix,
+    Number,
+    Vector,
+    _shape,
+    _to_matrix,
+    _to_vector,
+    _augment,
+    _clean_small_entries,
+    _copy_matrix,
+    _swap_rows,
+)
 
 """
 Các nội dung trong file này:

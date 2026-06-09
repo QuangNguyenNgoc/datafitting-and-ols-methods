@@ -1,12 +1,8 @@
 from __future__ import annotations
 from collections.abc import Sequence
 
-try:
-    from .matrix_utils import Number, _shape, _to_matrix
-    from .gaussian import _forward_elimination_ref
-except ImportError:
-    from matrix_utils import Number, _shape, _to_matrix
-    from gaussian import _forward_elimination_ref
+from .matrix_utils import Number, _shape, _to_matrix
+from .gaussian import _forward_elimination_ref
 
 """
 Tính định thức của ma trận vuông bằng phép khử Gauss.
