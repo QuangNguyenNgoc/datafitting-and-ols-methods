@@ -9,11 +9,7 @@ import math
 import random
 
 import numpy as np
-import scipy.stats as stats
 import pandas as pd
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-import statsmodels.api as sm
-from statsmodels.stats.outliers_influence import variance_inflation_factor
 
 from utils.matrix_utils import (
     mat_transpose,
@@ -23,37 +19,119 @@ from utils.matrix_utils import (
     matrix_vector_multiply,
 )
 from utils.inverse import inverse
+from utils.decomposition import svd_decomp
 
-from part1.utils_verif import _student_t_sf, _student_t_ppf
+from part1.utils_verif import _student_t_sf, _student_t_ppf, _f_sf_paulson
+
+_EPS = 1e-9
 
 
 def ols_fit(X, y):
     """
-    1. Tính vector hệ số beta_hat và phương sai sai số sigma2_hat.
+    1. Tính vector hệ số beta_hat bằng phương pháp OLS.
 
     Công thức toán học:
         beta_hat = (X^T X)^{-1} X^T y
-        sigma2_hat = RSS / (n - p)
+
+    Cài đặt bằng Economic SVD thuần Python (svd_decomp từ utils/decomposition.py):
+        X = U Sigma V^T  =>  beta_hat = V Sigma^{-1} U^T y
     """
-    model = sm.OLS(y, X).fit()
-    return np.array(model.params)
+    X_list = [[float(v) for v in row] for row in X]
+    y_list = [float(v) for v in y]
+
+    n_samples = len(X_list)
+    n_features = len(X_list[0])
+
+    U, Sigma, V_T = svd_decomp(X_list)
+    k_svd = min(len(Sigma), len(Sigma[0]))
+    s = [Sigma[i][i] for i in range(k_svd)]
+
+    m = len(U)
+    n = len(V_T)
+    r = len(s)
+
+    # Bước 1 & 2 & 3: Tính beta_hat bằng SVD
+    Ut_y = [sum(U[j][i] * y_list[j] for j in range(m)) for i in range(r)]
+    sp_Uty = [Ut_y[i] / s[i] if s[i] > _EPS else 0.0 for i in range(r)]
+    beta = [sum(V_T[i][j] * sp_Uty[i] for i in range(r)) for j in range(n)]
+
+    # Bước 4: Tính y_hat = X * beta
+    y_hat = []
+    for i in range(n_samples):
+        val = sum(X_list[i][j] * beta[j] for j in range(n_features))
+        y_hat.append(val)
+
+    # Bước 5: Tính RSS và sigma^2
+    rss = sum((y_list[i] - y_hat[i]) ** 2 for i in range(n_samples))
+    sigma2 = rss / (n_samples - n_features) if n_samples > n_features else 0.0
+
+    return beta, sigma2
 
 
-def hat_matrix(X):
+def hat_matrix(X: list[list[float]]) -> list[list[float]]:
     """
-    2. Tính ma trận chiếu H (Hat matrix) và kiểm tra tính lũy đẳng (idempotent).
+    2. Tính ma trận chiếu H (Hat matrix).
 
     Công thức toán học:
-        H = X(X^T X)^{-1} X^T
-    Điều kiện lũy đẳng: H @ H = H
+        H = X (X^T X)^{-1} X^T
+
+    Cài đặt bằng SVD thuần Python: X = U Sigma V^T
+        => H = U_r U_r^T
+    trong đó U_r là các cột của U ứng với sigma_i > EPS.
+
+    Tính chất quan trọng:
+        - Lũy đẳng: H^2 = H
+        - Đối xứng: H^T = H
+        - tr(H) = rank(X) = p+1
     """
-    X_mat = np.array(X)
-    return X_mat @ np.linalg.pinv(X_mat)
+    # ===== Tìm H ====
+    X_list = [[float(v) for v in row] for row in X]
+
+    # Phân rã SVD
+    U, Sigma, _ = svd_decomp(X_list)
+    k = min(len(Sigma), len(Sigma[0]))
+    s = [Sigma[i][i] for i in range(k)]
+
+    m = len(U)
+
+    # Khởi tạo ma trận H kích thước m x m với toàn số 0.0
+    H = [[0.0] * m for _ in range(m)]
+
+    # Tính H = sum_{col: s[col] > EPS} u_col u_col^T
+    for col in range(k):
+        if s[col] > _EPS:
+            for a in range(m):
+                for b in range(m):
+                    H[a][b] += U[a][col] * U[b][col]
+
+    # ==== kiểm tra idempotent ====
+    is_idempotent = True
+    H_square = [[0.0] * m for _ in range(m)]
+
+    # Tính H_square = H x H
+    for i in range(m):
+        for j in range(m):
+            for x in range(m):
+                H_square[i][j] += H[i][x] * H[x][j]
+
+    # So sánh H_square với H (sai số 1e-9)
+    for i in range(m):
+        for j in range(m):
+            if abs(H_square[i][j] - H[i][j]) > 1e-9:
+                is_idempotent = False
+                break
+        if not is_idempotent:
+            break
+
+    if is_idempotent:
+        print("Ma trận H thỏa mãn tính lũy đẳng (H^2 = H).")
+    else:
+        print("Ma trận H bị vi phạm tính lũy đẳng!")
+    return H
 
 
 def model_metrics(y: list, y_hat: list, p: int) -> dict:
     """
-    Tính các độ đo tổng hợp mô hình bằng 100% Python gốc:
     - RSS (Residual Sum of Squares)
     - TSS (Total Sum of Squares)
     - R^2 (Hệ số xác định)
@@ -88,12 +166,21 @@ def model_metrics(y: list, y_hat: list, p: int) -> dict:
         adj_r2 = float("nan")
         f_statistic = float("nan")
 
+    # p-value
+    df_model = p
+    df_resid = n - p - 1
+    # Tính F-stat
+    f_stat = ((tss - rss) / df_model) / (rss / df_resid) if rss > 0 else 0.0
+
+    p_value = _f_sf_paulson(f_stat, df_model, df_resid)
+
     return {
         "RSS": rss,
         "TSS": tss,
         "R2": r2,
         "Adj_R2": adj_r2,
         "F_statistic": f_statistic,
+        "p_value": p_value,
     }
 
 
@@ -103,7 +190,7 @@ def coef_inference(X: list, y: list, beta_hat: list, sigma2: float) -> pd.DataFr
     - Standard errors (sai số chuẩn của từng hệ số)
     - t-statistics (giá trị t)
     - p-values
-    - Khoảng tin cậy (Confidence Intervals) 95%
+    - Khoảng tin cậy 95%
     """
     X_mat = list(X)
     beta_list = list(beta_hat)
@@ -128,7 +215,7 @@ def coef_inference(X: list, y: list, beta_hat: list, sigma2: float) -> pd.DataFr
     p_values = [2.0 * _student_t_sf(abs(t_stats[i]), df) for i in range(k)]
 
     # khoảng tin cậy 95%
-    t_critical = _student_t_ppf(0.975, df)
+    t_critical = _student_t_ppf(df)
     ci_lower = [beta_list[i] - t_critical * se[i] for i in range(k)]
     ci_upper = [beta_list[i] + t_critical * se[i] for i in range(k)]
 
@@ -152,32 +239,80 @@ def vif(X):
        để kiểm tra hiện tượng đa cộng tuyến.
 
     Công thức: VIF_j = 1 / (1 - R^2_j)
+
+    Trong đó R^2_j là hệ số xác định khi hồi quy biến thứ j lên tất cả
+    các biến còn lại (có hệ số chặn).
+
+    Tham số:
+        X: ma trận đặc trưng (m x p), KHÔNG bao gồm cột hệ số chặn
+
+    Trả về:
+        DataFrame với cột Feature và VIF_Score
     """
-    X_df = pd.DataFrame(X)
-    vif_data = pd.DataFrame()
-    vif_data["Feature"] = X_df.columns
+    # Nếu đầu vào là DataFrame, tự động lấy tên cột
+    if isinstance(X, pd.DataFrame):
+        feature_names = X.columns.tolist()
+        X_list = X.values.tolist()
+    else:
+        X_list = [[float(v) for v in row] for row in X]
+        p = len(X_list[0])
+        # Nếu truyền list thuần, tự động đánh số thứ tự
+        feature_names = [f"Feature_{i}" for i in range(p)]
+
+    n = len(X_list)
+    p = len(X_list[0])
+
+    # Nếu không có tên cột, fallback về 0, 1, 2...
+    if feature_names is None:
+        feature_names = [f"Feature_{i}" for i in range(p)]
 
     vif_values = []
-    for i in range(X_df.shape[1]):
-        try:
-            val = variance_inflation_factor(X_df.values, i)
-        except Exception:
-            val = np.inf
-        vif_values.append(val)
+    for j in range(p):
+        y_j = [X_list[i][j] for i in range(n)]
+        other_cols = [c for c in range(p) if c != j]
 
-    vif_data["VIF_Score"] = vif_values
+        # Thêm hệ số chặn [1.0] vào đặc trưng
+        X_j_list = [[1.0] + [X_list[i][c] for c in other_cols] for i in range(n)]
+
+        try:
+            beta_j, _ = ols_fit(X_j_list, y_j)
+
+            y_hat_j = [
+                sum(X_j_list[i][c] * beta_j[c] for c in range(len(beta_j)))
+                for i in range(n)
+            ]
+
+            y_mean_j = sum(y_j) / n
+            ss_res = sum((y_j[i] - y_hat_j[i]) ** 2 for i in range(n))
+            ss_tot = sum((y_j[i] - y_mean_j) ** 2 for i in range(n))
+
+            r2_j = 1.0 - ss_res / ss_tot if ss_tot > 1e-12 else 0.0
+            vif_j = 1.0 / (1.0 - r2_j) if (1.0 - r2_j) > 1e-12 else float("inf")
+
+        except Exception:
+            # ma trận suy biến
+            vif_j = float("inf")
+
+        vif_values.append(vif_j)
+
+    vif_data = pd.DataFrame(
+        {
+            "Feature": feature_names,
+            "VIF_Score": vif_values,
+        }
+    )
     return vif_data
 
 
-def gauss_markov_simulation(n_simulations=1000, n_samples=100):
+def gauss_markov_simulation(n_simulations=1000, n_samples=100, seed_val=42):
     """
     Minh họa định lý Gauss-Markov bằng Monte Carlo:
     - Tính không chệch: E[beta_hat] = beta
     - Tính BLUE: Var(beta_OLS) < Var(beta_Alternative)
     """
     # khởi tạo ma trận X cố định và beta thực
-    # X có 1 cột bias và 2 cột đặc trưng ngẫu nhiên
-    random.seed(42)
+    random.seed(seed_val)
+
     p = 2
     X = [[1.0, random.uniform(0, 10), random.uniform(-5, 5)] for _ in range(n_samples)]
     true_beta = [3.0, 1.5, -2.0]
@@ -186,7 +321,6 @@ def gauss_markov_simulation(n_simulations=1000, n_samples=100):
     # tiền tính toán ma trận ánh xạ cho OLS (100% data)
     X_T = mat_transpose(X)
     X_T_X_inv = inverse(mat_mul(X_T, X))
-    # C_ols = (X^T X)^-1 X^T
     C_ols = mat_mul(X_T_X_inv, X_T)
 
     # tiền tính toán ma trận ánh xạ cho Alternative Estimator (60% data)
@@ -196,45 +330,32 @@ def gauss_markov_simulation(n_simulations=1000, n_samples=100):
     X_alt_T_X_alt_inv = inverse(mat_mul(X_alt_T, X_alt))
     C_alt = mat_mul(X_alt_T_X_alt_inv, X_alt_T)
 
-    # lưu trữ kết quả của 1000 vòng lặp
     beta_ols_results = {j: [] for j in range(k)}
     beta_alt_results = {j: [] for j in range(k)}
 
-    # VÒNG LẶP MONTE CARLO
     for _ in range(n_simulations):
-        # tạo nhiễu e ~ N(0, sigma^2)
         sigma = 2.0
         e = [random.gauss(0, sigma) for _ in range(n_samples)]
-
-        # sinh biến mục tiêu y = X*beta + e
         y = [
             sum(X[i][j] * true_beta[j] for j in range(k)) + e[i]
             for i in range(n_samples)
         ]
-
         beta_ols = matrix_vector_multiply(C_ols, y)
         beta_alt = matrix_vector_multiply(C_alt, y[:n_alt])
-
-        # Lưu kết quả
         for j in range(k):
             beta_ols_results[j].append(beta_ols[j])
             beta_alt_results[j].append(beta_alt[j])
 
-    # thống kê
     report = []
     for j in range(k):
-        # E[beta_hat]
         e_ols = sum(beta_ols_results[j]) / n_simulations
         e_alt = sum(beta_alt_results[j]) / n_simulations
-
-        # Var(beta_hat)
         var_ols = sum((b - e_ols) ** 2 for b in beta_ols_results[j]) / (
             n_simulations - 1
         )
         var_alt = sum((b - e_alt) ** 2 for b in beta_alt_results[j]) / (
             n_simulations - 1
         )
-
         report.append(
             {
                 "beta_idx": j,
