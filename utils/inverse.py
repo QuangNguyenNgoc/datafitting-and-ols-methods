@@ -1,32 +1,32 @@
 from __future__ import annotations
 from collections.abc import Sequence
 
-from .matrix_utils import (
-    Matrix,
-    Number,
-    _to_matrix,
-    _shape,
-    _identity,
-    _augment,
-    _swap_rows,
-    _clean_small_entries,
-)
+try:
+    from .matrix_utils import (
+        Matrix, Number, _to_matrix, _shape, _identity,
+        _augment, _swap_rows, _clean_small_entries,
+    )
+except ImportError:
+    from matrix_utils import (  # noqa: F401 (standalone mode)
+        Matrix, Number, _to_matrix, _shape, _identity,
+        _augment, _swap_rows, _clean_small_entries,
+    )
 
 """
-Tính ma trận nghịch đảo bằng Gauss-Jordan.
+Tinh ma tran nghich dao bang Gauss-Jordan.
 """
 
 
 def inverse(A: Sequence[Sequence[Number]], eps: float = 1e-12) -> Matrix:
     """
-    Đầu vào:
-    - A: ma trận vuông
-    - eps: ngưỡng nhận diện số gần bằng 0
+    Dau vao:
+    - A: ma tran vuong
+    - eps: nguong nhan dien so gan bang 0
 
-    Đầu ra:
-    - Ma trận nghịch đảo A^{-1}
+    Dau ra:
+    - Ma tran nghich dao A^{-1}
 
-    * Nếu A không khả nghịch thì hàm báo lỗi.
+    * Neu A khong kha nghich thi ham bao loi.
     """
     matrix = _to_matrix(A)
     n, m = _shape(matrix)

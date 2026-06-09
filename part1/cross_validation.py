@@ -40,7 +40,7 @@ def kfold_cv(X: list, y: list, k: int = 5) -> float:
         y_val = [y[idx] for idx in val_indices]
 
         # huấn luyện mô hình trên tập Train
-        beta_hat = ols_fit(X_train, y_train)
+        beta_hat, _ = ols_fit(X_train, y_train)
 
         # dự đoán trên tập Validation
         y_pred = matrix_vector_multiply(X_val, beta_hat)

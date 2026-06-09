@@ -49,7 +49,7 @@ def run_validation():
     }
 
     # ── Step 2: Run OUR custom ols_fit ────────────────────────────────────
-    beta_custom = ols_fit(X, y)
+    beta_custom, _ = ols_fit(X, y)
     y_hat_custom = X @ beta_custom
     results["beta_custom"] = beta_custom
     results["y_hat_custom"] = y_hat_custom

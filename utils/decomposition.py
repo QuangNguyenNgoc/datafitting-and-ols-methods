@@ -1,5 +1,13 @@
 from __future__ import annotations
 
+import os as _os
+import sys as _sys
+
+# Thêm thư mục utils/ vào path để diagonalization.py có thể tìm thấy inverse, matrix_utils...
+_UTILS_DIR = _os.path.dirname(_os.path.abspath(__file__))
+if _UTILS_DIR not in _sys.path:
+    _sys.path.insert(0, _UTILS_DIR)
+
 """
 PHÂN RÃ GIÁ TRỊ KỲ DỊ (SVD - Singular Value Decomposition)
 Tại sao sử dụng SVD thay vì các loại phân rã khác (LU, QR, Cholesky, Eigen)?
