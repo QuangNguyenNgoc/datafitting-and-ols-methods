@@ -81,6 +81,9 @@
 #set math.equation(numbering: "(1.1)")
 #show: equate.with(breakable: true, sub-numbering: true)
 
+#show figure.where(kind: table): set figure(supplement: [Bảng])
+#show figure.where(kind: image): set figure(supplement: [Hình])
+
 // figure caption
 #show figure.caption: it => [
   #set text(size: 10pt, fill: soft_color)
@@ -110,7 +113,7 @@
 #counter(page).update(1)
 #show: chic.with(
   chic-header(
-    left-side: hf-style[Khoa Công nghệ Thông tin - ĐHKHTN],
+    left-side: hf-style[Khoa Công nghệ Thông tin],
     right-side: hf-style[Trường Đại học Khoa học Tự nhiên - ĐHQG-HCM],
   ),
   chic-footer(
