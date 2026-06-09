@@ -158,7 +158,7 @@ Cả bốn hàm `ols_fit`, `hat_matrix`, `ridge_fit` và `vif` đều được k
 - `vif`: VIF $approx 1$ trên dữ liệu độc lập; VIF $> 13000$ khi biến thứ ba $approx 0.99 x_1$ (đa cộng tuyến mạnh).
 == Nhóm 1: Ước lượng và Đánh giá độ phù hợp
 
-=== 1. Phân rã phương sai và Thống kê tổng thể (`model_metrics`)
+=== Phân rã phương sai và Thống kê tổng thể (`model_metrics`)
 
 Để đánh giá chất lượng của mô hình hồi quy tuyến tính OLS, ta cần phân tích các thành phần phương sai và kiểm định sự phù hợp tổng thể của mô hình. Trong phần này, các công thức toán học lõi được cài đặt hoàn toàn từ đầu (from scratch) bằng Đại số tuyến tính.
 
@@ -219,7 +219,7 @@ $ F = ((T S S - R S S) / (k - 1)) / ("RSS" / (n - k)) $
 
 == Nhóm 2: Suy diễn Thống kê và Định lý Gauss-Markov
 
-=== 2. Định lý Gauss-Markov và Mô phỏng Monte Carlo (`gauss_markov_simulation`)
+=== Định lý Gauss-Markov và Mô phỏng Monte Carlo (`gauss_markov_simulation`)
 
 Định lý Gauss-Markov là nền tảng lý thuyết chứng tỏ sự ưu việt của phương pháp OLS. Định lý phát biểu rằng: Dưới các giả định cơ bản (Kỳ vọng sai số bằng 0, Phương sai sai số không đổi và không có tự tương quan), OLS là ước lượng tuyến tính không chệch tốt nhất (BLUE - Best Linear Unbiased Estimator).
 
@@ -234,7 +234,7 @@ Vì giả định mô hình có $E[epsilon] = 0$, ta thu được $E[hat(beta)] 
 Để chứng minh OLS có phương sai nhỏ nhất trong lớp các ước lượng không chệch, đồ án đã cài đặt thuật toán mô phỏng Monte Carlo. Quá trình sinh ra hàng ngàn mẫu ngẫu nhiên và so sánh ma trận hiệp phương sai của OLS với một phép ước lượng thay thế (Alternative Estimator - được tạo bằng cách làm nhiễu trọng số). 
 Kết quả thực nghiệm từ chương trình (ví dụ: $"Var"_"OLS" = 0.1532 < "Var"_"Alt" = 0.2865$) là minh chứng xác nhận bằng số học rằng đồ thị phân phối của OLS luôn hẹp và hội tụ tốt nhất.
 
-=== 3. Suy diễn hệ số (`coef_inference`)
+=== Suy diễn hệ số (`coef_inference`)
 
 Sau khi tìm được $hat(beta)$ và chứng minh được nó là ước lượng tốt nhất, bước tiếp theo là đánh giá độ tin cậy của từng hệ số riêng biệt nhằm xác định xem biến độc lập tương ứng có thực sự tác động lên biến phụ thuộc hay không.
 
@@ -257,7 +257,7 @@ Việc chuẩn hóa phân phối $t$ bằng các phép biến đổi giải tíc
 
 == Nhóm 3: Chẩn đoán và Tổng quát hóa Mô hình
 
-=== 4. Phân tích Phần dư (Residual Analysis - `residual_plots`)
+=== Phân tích Phần dư (Residual Analysis - `residual_plots`)
 
 Để kiểm chứng xem dữ liệu có vi phạm các giả định Gauss-Markov hay không, đồ án cài đặt thuật toán vẽ 4 biểu đồ chẩn đoán tiêu chuẩn. Quá trình này đòi hỏi phải tính toán Phần dư chuẩn hóa (Standardized Residuals) và Giá trị đòn bẩy (Leverage).
 
@@ -272,7 +272,7 @@ Việc chuẩn hóa phân phối $t$ bằng các phép biến đổi giải tíc
 3. Scale-Location: Dùng để phát hiện hiện tượng phương sai thay đổi (Heteroscedasticity). Trục tung sử dụng $sqrt(|r_i|)$. Nếu các điểm toe ra thành hình cái phễu, phương sai không đồng đều, OLS sẽ mất đi tính hiệu quả tối ưu (không còn là BLUE).
 4. Residuals vs Leverage: Xác định các Điểm ảnh hưởng (Influential points). Những điểm nằm ở góc phải (có $h_(i i)$ lớn) và xa trục 0 (có $r_i$ lớn) sẽ làm xô lệch đường hồi quy và cần được loại bỏ.
 
-=== 5. Kiểm định chéo (K-Fold Cross Validation - `kfold_cv`)
+=== Kiểm định chéo (K-Fold Cross Validation - `kfold_cv`)
 
 Việc đánh giá mô hình bằng "RSS" trên tập huấn luyện (Train set) là không đủ, vì khi thêm càng nhiều biến (thậm chí là biến rác), "RSS" luôn có xu hướng giảm, dẫn đến hiện tượng Học vẹt (Overfitting). Đồ án tự cài đặt giải thuật K-Fold Cross Validation để đánh giá chính xác năng lực tổng quát hóa (Generalization) của mô hình.
 
