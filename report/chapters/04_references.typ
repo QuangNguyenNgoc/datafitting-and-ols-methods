@@ -1,6 +1,5 @@
 = Tài liệu tham khảo
 
-1. Nguyễn Quang Dong, Nguyễn Thị Minh. _Giáo trình Kinh tế lượng_. Nhà xuất bản Đại học Kinh tế Quốc dân, 2017.
-2. Vũ Hữu Tiệp. _Machine Learning cơ bản_. Nhà xuất bản Khoa học và Kỹ thuật, 2018.
-3. Lê Sĩ Đồng. _Toán ứng dụng và thống kê_. Nhà xuất bản Khoa học và Kỹ thuật, 2010.
-4. Gareth James, Daniela Witten, Trevor Hastie & Robert Tibshirani. _An Introduction to Statistical Learning_, 2nd ed. Springer, 2021.
+1. Dan Becker. _Melbourne Housing Snapshot Dataset_. Kaggle, 2018.
+2. Lê Hồng Nhật. _Giáo trình Kinh tế lượng_. NXB Đại học Quốc gia TP.HCM, 2021.
+3. Vũ Hữu Tiệp. _Machine Learning cơ bản_. NXB Khoa học và Kỹ thuật, 2018.
