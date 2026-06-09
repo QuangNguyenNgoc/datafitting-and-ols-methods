@@ -1,71 +1,103 @@
 """
 SVD Solver Utilities
 ====================
-Các tính toán dựa trên Singular Value Decomposition (SVD).
+Cac tien ich tinh toan dua tren Singular Value Decomposition (SVD).
 
-Dùng np.linalg.svd (NumPy) để:
-- Giải hệ OLS (tránh kỳ dị khi X^T X gần suy biến)
-- Tính ma trận Hat H = U U^T hiệu quả bộ nhớ (Economic SVD)
+Dung svd_decomp tu utils/decomposition.py
+de giai he OLS va tinh ma tran Hat H = U_r U_r^T.
 
-  - (X^T X)^{-1} kém ổn định khi X có cột gần tuyến tính phụ thuộc.
-  - SVD luôn tồn tại, xử lý được cả ma trận chữ nhật và suy biến.
-  - H = U U^T (U từ Economic SVD của X) cho leverage h_ii chính xác mà không cần lưu toàn bộ H (dùng np.sum(U**2, axis=1)).
+Numpy chi dung de:
+- Nhan dau vao dang array
+- Kiem chung ket qua (trong notebook)
 """
 
 from __future__ import annotations
 
 import numpy as np
-from typing import Tuple
+
+# Import svd_decomp thuan Python tu utils/decomposition.py
+from utils.decomposition import svd_decomp
+
+# Nguong bo qua gia tri ky di nho (dong bo voi _EPS trong diagonalization.py)
+_EPS = 1e-9
 
 
-def economic_svd(X: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+def economic_svd(X):
     """
-    Phân rã SVD kinh tế (thin SVD) của X (m x n): X = U Sigma V^T.
+    Goi svd_decomp cho ma tran X.
 
-    Tham số:
-        X: ma trận kích thước (m, n)
-
-    Trả về:
-        U     : ma trận (m, k), k = min(m,n), cột trực chuẩn
-        s     : vector giá trị kỳ dị kích thước (k,), giảm dần
-        Vt    : ma trận (k, n), V^T
+    Tra ve:
+        U     : list of lists (m x m), cac vector don vi trai
+        s     : list cac gia tri ky di (giam dan), chieu dai min(m,n)
+        V_T   : list of lists (n x n), V^T
     """
-    return np.linalg.svd(X, full_matrices=False)
+    X_list = [[float(v) for v in row] for row in X]
+    U, Sigma, V_T = svd_decomp(X_list)
+    k = min(len(Sigma), len(Sigma[0]))
+    s = [Sigma[i][i] for i in range(k)]
+    return U, s, V_T
 
 
-def svd_solve(X: np.ndarray, y: np.ndarray) -> np.ndarray:
+def svd_solve(X, y):
     """
-    Giải bài toán OLS bằng Economic SVD.
+    Giai bai toan OLS bang Economic SVD.
 
-    Công thức: beta = V diag(1/s) U^T y
-    Chỉ giữ lại các giá trị kỳ dị lớn hơn ngưỡng (tránh chia cho 0).
+    Cong thuc: beta = V Sigma^{+} U^T y
+    Chi giu cac thanh phan voi sigma_i > _EPS.
 
-    Tham số:
-        X: ma trận thiết kế (m, n), đã bao gồm cột hệ số chặn nếu cần
-        y: vector mục tiêu (m,)
+    Tham so:
+        X: ma tran thiet ke (m x n), list hoac numpy array
+        y: vector muc tieu (m,)
 
-    Trả về:
-        beta: vector hệ số OLS (n,)
+    Tra ve:
+        beta: numpy array (n,)
     """
-    U, s, Vt = economic_svd(X)
-    # Ngưỡng loại bỏ giá trị kỳ dị nhỏ (tương tự np.linalg.lstsq)
-    tol = max(X.shape) * np.finfo(float).eps * s[0]
-    mask = s > tol
-    # beta = V[:,mask] @ diag(1/s[mask]) @ U[:,mask].T @ y
-    beta = (Vt[mask].T) @ (U[:, mask].T @ y / s[mask])
-    return beta
+    X_list = [[float(v) for v in row] for row in X]
+    y_list = [float(v) for v in y]
+
+    U, s, V_T = economic_svd(X_list)
+
+    m = len(U)        # so hang cua X
+    n = len(V_T)      # so cot cua X (so tham so)
+    r = len(s)        # so gia tri ky di
+
+    # Buoc 1: U^T y  =>  vector kich thuoc r
+    # (U^T y)_i = sum_j U[j][i] * y[j]   (cot i cua U dot y)
+    Ut_y = [
+        sum(U[j][i] * y_list[j] for j in range(m))
+        for i in range(r)
+    ]
+
+    # Buoc 2: Sigma^{+} (U^T y)  =>  chia cho sigma_i neu sigma_i > _EPS
+    SigmaPlus_Ut_y = [
+        Ut_y[i] / s[i] if s[i] > _EPS else 0.0
+        for i in range(r)
+    ]
+
+    # Buoc 3: beta = V (Sigma^{+} U^T y)
+    # V[j][i] = V_T[i][j]  =>  beta[j] = sum_i V_T[i][j] * SigmaPlus_Ut_y[i]
+    beta = [
+        sum(V_T[i][j] * SigmaPlus_Ut_y[i] for i in range(r))
+        for j in range(n)
+    ]
+
+    return np.array(beta, dtype=float)
 
 
-def hat_diagonal(X: np.ndarray) -> np.ndarray:
+def hat_diagonal(X):
     """
-    Tính đường chéo h_ii của ma trận Hat H = X(X^T X)^{-1} X^T
-    hiệu quả bộ nhớ bằng Economic SVD: h_ii = sum(U_i^2).
+    Tinh duong cheo h_ii cua Hat matrix H = U_r U_r^T bang SVD: h_ii = sum_{k: s_k > EPS} U[i][k]^2
 
-    Tham số:
-        X: ma trận thiết kế (m, n)
+    Tham so:
+        X: ma tran thiet ke (m x n)
 
-    Trả về:
-        h: vector leverage h_ii kích thước (m,)
+    Tra ve:
+        h: numpy array (m,)
     """
-    U, _, _ = economic_svd(X)
-    return np.sum(U ** 2, axis=1)
+    U, s, _ = economic_svd(X)
+    m = len(U)
+    h = [
+        sum(U[i][k] ** 2 for k in range(len(s)) if s[k] > _EPS)
+        for i in range(m)
+    ]
+    return np.array(h, dtype=float)
