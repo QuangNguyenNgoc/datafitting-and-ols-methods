@@ -251,11 +251,13 @@ def vif(X):
     """
     # Nếu đầu vào là DataFrame, tự động lấy tên cột
     if isinstance(X, pd.DataFrame):
-        if feature_names is None:
-            feature_names = X.columns.tolist()
+        feature_names = X.columns.tolist()
         X_list = X.values.tolist()
     else:
         X_list = [[float(v) for v in row] for row in X]
+        p = len(X_list[0])
+        # Nếu truyền list thuần, tự động đánh số thứ tự
+        feature_names = [f"Feature_{i}" for i in range(p)]
 
     n = len(X_list)
     p = len(X_list[0])
