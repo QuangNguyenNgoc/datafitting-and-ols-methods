@@ -100,7 +100,7 @@ Việc chuẩn hóa phân phối $t$ bằng các phép biến đổi giải tíc
 
 === 4. Phân tích Phần dư (Residual Analysis - `residual_plots`)
 
-Để kiểm chứng xem dữ liệu có vi phạm các giả định Gauss-Markov hay không, đồ án cài đặt thuật toán vẽ 4 biểu đồ chẩn đoán tiêu chuẩn (tương đương với lệnh `plot(lm)` trong ngôn ngữ R). Quá trình này đòi hỏi phải tính toán Phần dư chuẩn hóa (Standardized Residuals) và Giá trị đòn bẩy (Leverage).
+Để kiểm chứng xem dữ liệu có vi phạm các giả định Gauss-Markov hay không, đồ án cài đặt thuật toán vẽ 4 biểu đồ chẩn đoán tiêu chuẩn. Quá trình này đòi hỏi phải tính toán Phần dư chuẩn hóa (Standardized Residuals) và Giá trị đòn bẩy (Leverage).
 
 *a. Cơ sở Toán học của các chỉ số:*
 - *Giá trị đòn bẩy ($h_(i i)$):* Là các phần tử trên đường chéo chính của Ma trận chiếu $H$. Nó đo lường mức độ "cực đoan" của điểm dữ liệu $X_i$ so với trung tâm dữ liệu.
