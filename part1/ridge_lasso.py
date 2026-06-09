@@ -16,6 +16,20 @@ from utils.matrix_utils import (
 from utils.inverse import inverse
 
 
+def _ridge_fit_precomputed(
+    X_T_X: list[list[float]],
+    X_T_y: list[float],
+    lam: float,
+) -> list[float]:
+    p = len(X_T_X)
+    A = [
+        [X_T_X[i][j] + (float(lam) if i == j else 0.0) for j in range(p)]
+        for i in range(p)
+    ]
+    A_inv = inverse(A)
+    return matrix_vector_multiply(A_inv, X_T_y)
+
+
 def ridge_fit(X: list[list[float]], y: list[float], lam: float) -> list[float]:
     """
     6. Cài đặt Ridge Regression.
@@ -34,22 +48,11 @@ def ridge_fit(X: list[list[float]], y: list[float], lam: float) -> list[float]:
     X_list = [[float(v) for v in row] for row in X]
     y_list = [float(v) for v in y]
 
-    p = len(X_list[0])
-
     X_T = mat_transpose(X_list)
     X_T_X = mat_mul(X_T, X_list)
-
-    # ma trận A = X^T X + lam * I
-    A = [
-        [X_T_X[i][j] + (float(lam) if i == j else 0.0) for j in range(p)]
-        for i in range(p)
-    ]
-
-    A_inv = inverse(A)
     X_T_y = matrix_vector_multiply(X_T, y_list)
-    beta = matrix_vector_multiply(A_inv, X_T_y)
 
-    return beta
+    return _ridge_fit_precomputed(X_T_X, X_T_y, lam)
 
 
 def compute_ridge_trace(
