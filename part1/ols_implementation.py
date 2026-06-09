@@ -304,14 +304,15 @@ def vif(X):
     return vif_data
 
 
-def gauss_markov_simulation(n_simulations=1000, n_samples=100):
+def gauss_markov_simulation(n_simulations=1000, n_samples=100, seed_val=42):
     """
     Minh họa định lý Gauss-Markov bằng Monte Carlo:
     - Tính không chệch: E[beta_hat] = beta
     - Tính BLUE: Var(beta_OLS) < Var(beta_Alternative)
     """
     # khởi tạo ma trận X cố định và beta thực
-    random.seed(42)
+    random.seed(seed_val)
+
     p = 2
     X = [[1.0, random.uniform(0, 10), random.uniform(-5, 5)] for _ in range(n_samples)]
     true_beta = [3.0, 1.5, -2.0]
