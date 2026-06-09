@@ -17,7 +17,7 @@
   #v(1.2cm)
   #text(24pt, weight: "bold", fill: rgb("#1E3778"))[BÁO CÁO ĐỒ ÁN 2]
   #v(0.4cm)
-  #text(20pt, weight: "bold")[Data Fitting và bình phương tối thiểu OLS]
+  #text(18pt, weight: "bold")[Hồi quy tuyến tính và\ phương pháp bình phương tối thiểu]
   #v(0.4cm)
   #align(center)[
     #set text(15pt)
