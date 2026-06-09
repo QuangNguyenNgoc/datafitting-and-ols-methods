@@ -24,7 +24,7 @@ Thu được phương trình chuẩn:
 
 $ X^T X hat(beta) = X^T y $
 
-Định lý: Khi $X^T X$ khả nghịch (tức các cột của $X$ độc lập tuyến tính), nghiệm duy nhất là:
+*Định lý:* Khi $X^T X$ khả nghịch (tức các cột của $X$ độc lập tuyến tính), nghiệm duy nhất là:
 
 $ hat(beta) = (X^T X)^(-1) X^T y $
 
@@ -89,7 +89,7 @@ Lấy đạo hàm và đặt bằng 0:
 $ -2 X^T (y - X beta) + 2 lambda beta = 0 $
 $ (X^T X + lambda I) beta = X^T y $
 
-Nghiệm Ridge:
+*Nghiệm Ridge:*
 $ hat(beta)_"ridge" = (X^T X + lambda I)^(-1) X^T y $
 
 Ma trận $(X^T X + lambda I)$ luôn khả nghịch với $lambda > 0$ vì tất cả trị riêng của $X^T X + lambda I$ đều $>= lambda > 0$. Khi $lambda = 0$, thu về OLS. Khi $lambda -> infinity$, $hat(beta)_"ridge" -> 0$.
@@ -160,7 +160,7 @@ Trong đó, $H = X(X^T X)^(-1)X^T$ được gọi là Ma trận chiếu (Hat mat
 - Tính lũy đẳng (Idempotent): $ H^2 &= H H = X(X^T X)^(-1)X^T X(X^T X)^(-1)X^T \ &= X(X^T X)^(-1) (X^T X) (X^T X)^(-1) X^T = X(X^T X)^(-1)X^T = H $
 *b. Vector phần dư và hệ quả*\
 - Ta có vector phần dư $e = y - hat(y) = (I - H)y$. \
-Chứng minh tính trực giao: Phần dư luôn trực giao với không gian sinh bởi ma trận thiết kế $X$:
+*Chứng minh tính trực giao:* Phần dư luôn trực giao với không gian sinh bởi ma trận thiết kế $X$:
 $ X^T e = X^T (I - H) y = (X^T - X^T X (X^T X)^(-1) X^T) y = (X^T - X^T) y = 0 $
 Hệ quả:
 1. Tổng các phần dư bằng 0 ($sum e_i = 0$) do $X$ có chứa cột hệ số chặn (toàn số 1).
@@ -171,7 +171,7 @@ Sự biến thiên của dữ liệu (TSS) được phân rã thành hai thành 
 - Tổng bình phương phần dư (RSS): Đo lường sai số của mô hình.
   $ R S S = e^T e = sum_(i=1)^n (y_i - hat(y)_i)^2 $
   
-  Chứng minh (Phân tích ma trận $e^T e$): \
+  *Chứng minh (Phân tích ma trận $e^T e$):* \
   Khai triển vector phần dư $e = y - X hat(beta)$, ta có:
   $ e^T e &= (y - X hat(beta))^T (y - X hat(beta)) \
           &= y^T y - y^T X hat(beta) - hat(beta)^T X^T y + hat(beta)^T (X^T X) hat(beta) $
@@ -183,7 +183,7 @@ Sự biến thiên của dữ liệu (TSS) được phân rã thành hai thành 
 - Tổng bình phương toàn phần (TSS): Đo lường sự phân tán của dữ liệu so với giá trị trung bình. Dạng vector hóa với vector trung tâm $y_c = y - overline(y) bold(1)$ (với $bold(1)$ là vector cột gồm $n$ số 1):
   $ T S S = y_c^T y_c = sum_(i=1)^n (y_i - overline(y))^2 $
   
-  Chứng minh (Phân tích ma trận $y_c^T y_c$): \
+  *Chứng minh (Phân tích ma trận $y_c^T y_c$):* \
   Khai triển tích vô hướng của vector trung tâm:
   $ y_c^T y_c &= (y - overline(y) bold(1))^T (y - overline(y) bold(1)) \
               &= y^T y - y^T (overline(y) 1) - (overline(y) bold(1))^T y + (overline(y) bold(1))^T (overline(y) bold(1)) $
