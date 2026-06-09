@@ -249,41 +249,53 @@ def vif(X):
     Trả về:
         DataFrame với cột Feature và VIF_Score
     """
-    # Chuyển sang list-of-lists thuần Python
-    X_list = [[float(v) for v in row] for row in X]
+    # Nếu đầu vào là DataFrame, tự động lấy tên cột
+    if isinstance(X, pd.DataFrame):
+        if feature_names is None:
+            feature_names = X.columns.tolist()
+        X_list = X.values.tolist()
+    else:
+        X_list = [[float(v) for v in row] for row in X]
+
     n = len(X_list)
     p = len(X_list[0])
 
+    # Nếu không có tên cột, fallback về 0, 1, 2...
+    if feature_names is None:
+        feature_names = [f"Feature_{i}" for i in range(p)]
+
     vif_values = []
     for j in range(p):
-        # Biến j làm mục tiêu
         y_j = [X_list[i][j] for i in range(n)]
-
-        # Các biến còn lại + hệ số chặn làm đặc trưng
         other_cols = [c for c in range(p) if c != j]
+
+        # Thêm hệ số chặn [1.0] vào đặc trưng
         X_j_list = [[1.0] + [X_list[i][c] for c in other_cols] for i in range(n)]
 
-        # Hồi quy OLS
-        beta_j, _ = list(ols_fit(X_j_list, y_j))
+        try:
+            beta_j, _ = ols_fit(X_j_list, y_j)
 
-        # Tính y_hat
-        y_hat_j = [
-            sum(X_j_list[i][c] * beta_j[c] for c in range(len(beta_j)))
-            for i in range(n)
-        ]
+            y_hat_j = [
+                sum(X_j_list[i][c] * beta_j[c] for c in range(len(beta_j)))
+                for i in range(n)
+            ]
 
-        # R^2 = 1 - RSS/TSS
-        y_mean_j = sum(y_j) / n
-        ss_res = sum((y_j[i] - y_hat_j[i]) ** 2 for i in range(n))
-        ss_tot = sum((y_j[i] - y_mean_j) ** 2 for i in range(n))
+            y_mean_j = sum(y_j) / n
+            ss_res = sum((y_j[i] - y_hat_j[i]) ** 2 for i in range(n))
+            ss_tot = sum((y_j[i] - y_mean_j) ** 2 for i in range(n))
 
-        r2_j = 1.0 - ss_res / ss_tot if ss_tot > 1e-12 else 0.0
-        vif_j = 1.0 / (1.0 - r2_j) if (1.0 - r2_j) > 1e-12 else float("inf")
+            r2_j = 1.0 - ss_res / ss_tot if ss_tot > 1e-12 else 0.0
+            vif_j = 1.0 / (1.0 - r2_j) if (1.0 - r2_j) > 1e-12 else float("inf")
+
+        except Exception:
+            # ma trận suy biến
+            vif_j = float("inf")
+
         vif_values.append(vif_j)
 
     vif_data = pd.DataFrame(
         {
-            "Feature": list(range(p)),
+            "Feature": feature_names,
             "VIF_Score": vif_values,
         }
     )
