@@ -62,7 +62,7 @@ $ F = ((T S S - R S S) / (k - 1)) / ("RSS" / (n - k)) $
 
 === 2. Định lý Gauss-Markov và Mô phỏng Monte Carlo (`gauss_markov_simulation`)
 
-Định lý Gauss-Markov là nền tảng lý thuyết khẳng định sự ưu việt của phương pháp OLS. Định lý phát biểu rằng: Dưới các giả định cơ bản (Kỳ vọng sai số bằng 0, Phương sai sai số không đổi và không có tự tương quan), OLS là ước lượng tuyến tính không chệch tốt nhất (*BLUE* - Best Linear Unbiased Estimator).
+Định lý Gauss-Markov là nền tảng lý thuyết chứng tỏ sự ưu việt của phương pháp OLS. *Định lý phát biểu rằng:* Dưới các giả định cơ bản (Kỳ vọng sai số bằng 0, Phương sai sai số không đổi và không có tự tương quan), OLS là ước lượng tuyến tính không chệch tốt nhất (*BLUE* - Best Linear Unbiased Estimator).
 
 *a. Chứng minh tính không chệch (Unbiasedness):* \
 Kỳ vọng của vector hệ số ước lượng $hat(beta)$ phải bằng chính giá trị thực $beta$.
@@ -73,7 +73,7 @@ Vì giả định mô hình có $E[epsilon] = 0$, ta thu được $E[hat(beta)] 
 
 *b. Tính "Tốt nhất" (Minimum Variance) và Thực nghiệm Monte Carlo:* \
 Để chứng minh OLS có phương sai nhỏ nhất trong lớp các ước lượng không chệch, đồ án đã cài đặt thuật toán mô phỏng Monte Carlo. Quá trình sinh ra hàng ngàn mẫu ngẫu nhiên và so sánh ma trận hiệp phương sai của OLS với một phép ước lượng thay thế (Alternative Estimator - được tạo bằng cách làm nhiễu trọng số). 
-Kết quả thực nghiệm từ chương trình (ví dụ: $V a r_"OLS" = 0.1532 < V a r_"Alt" = 0.2865$) là minh chứng sắc bén, xác nhận bằng số học rằng đồ thị phân phối của OLS luôn hẹp và hội tụ tốt nhất.
+Kết quả thực nghiệm từ chương trình (ví dụ: $"Var"_"OLS" = 0.1532 < "Var"_"Alt" = 0.2865$) là minh chứng xác nhận bằng số học rằng đồ thị phân phối của OLS luôn hẹp và hội tụ tốt nhất.
 
 === 3. Suy diễn hệ số (`coef_inference`)
 
@@ -91,8 +91,7 @@ $ t_j = (hat(beta)_j) / (S E(hat(beta)_j)) $
 Khoảng tin cậy 95% cho hệ số được thiết lập bởi:
 $ C I = hat(beta)_j plus.minus t_(alpha/2, n-k) times S E(hat(beta)_j) $
 
-*c. Đột phá về Giải thuật tính $p$-value ($O(1)$):* \
-Thay vì sử dụng thư viện `scipy` hay tích phân số học (chậm và tốn bộ nhớ) để tìm diện tích dưới đường cong phân phối Student-t, đồ án đã thiết kế thuật toán thuần Python:
+*c. Ghi chú về giải thuật tính $p$-value ($O(1)$):* \
 - Sử dụng *Phép xấp xỉ đa thức Wallace* cho hàm phân phối tích lũy (CDF) để tính $p$-value.
 - Sử dụng *Khai triển Cornish-Fisher* để tìm giá trị tới hạn (Critical Value) cho khoảng tin cậy.
-Việc chuẩn hóa phân phối $t$ bằng các phép biến đổi giải tích giúp thuật toán tính xác suất đạt độ phức tạp $O(1)$, thể hiện kỹ năng Thống kê Máy tính (Computational Statistics) chuyên sâu và đáp ứng tuyệt đối tiêu chí "Cài đặt từ đầu" (From scratch).
+Việc chuẩn hóa phân phối $t$ bằng các phép biến đổi giải tích giúp thuật toán tính xác suất đạt độ phức tạp $O(1)$.
