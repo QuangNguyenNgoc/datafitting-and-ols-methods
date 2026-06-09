@@ -74,6 +74,9 @@ def run_validation():
 
     # ── Step 5: Compute metrics via our custom function ───────────────────
     metrics_custom = model_metrics(y, y_hat_custom, p)
+    # Add MAE and RMSE to metrics_custom since the report generation expects them
+    metrics_custom["MAE"] = float(np.mean(np.abs(y - y_hat_custom)))
+    metrics_custom["RMSE"] = float(np.sqrt(np.mean((y - y_hat_custom) ** 2)))
     results["metrics_custom"] = metrics_custom
 
     # ── Step 6: Manually compute RSS, TSS, R2 for the report ──────────────

@@ -30,32 +30,10 @@ def train_test_split(
     n_test = int(np.ceil(len(df) * test_size))
     test_idx = indices[:n_test]
     train_idx = indices[n_test:]
-
     df_train = df.iloc[train_idx].reset_index(drop=True)
     df_test = df.iloc[test_idx].reset_index(drop=True)
     return df_train, df_test
 
-
-def train_test_split(
-    df: pd.DataFrame,
-    test_size: float = 0.3,
-    random_state: int = None,
-) -> tuple:
-    if len(df) == 0:
-        raise ValueError("df must not be empty")
-
-    if not 0 < test_size < 1:
-        raise ValueError("test_size must be between 0 and 1")
-
-    rng = np.random.default_rng(random_state)
-    indices = rng.permutation(len(df))
-    n_test = int(np.ceil(len(df) * test_size))
-    test_idx = indices[:n_test]
-    train_idx = indices[n_test:]
-
-    df_train = df.iloc[train_idx].reset_index(drop=True)
-    df_test = df.iloc[test_idx].reset_index(drop=True)
-    return df_train, df_test
 
 
 class DataPipeline:

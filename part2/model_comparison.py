@@ -30,6 +30,7 @@ except Exception:
 from part1.ols_implementation import ols_fit, coef_inference, vif, model_metrics
 from part1.ridge_lasso import ridge_fit
 from part1.cross_validation import kfold_cv
+custom_ridge_fit = ridge_fit
 
 
 class DiagnosticsResult(dict):
@@ -167,12 +168,19 @@ def _fit_custom_ridge(
 
 
 def train_models(
-    X_train,
-    y_train,
-    X_test,
-    y_test,
+    X_train=None,
+    y_train=None,
+    X_test=None,
+    y_test=None,
+    X_train_raw=None,
+    X_train_best=None,
+    X_test_raw=None,
+    X_test_best=None,
     custom_ols_func: Callable | None = None,
     custom_ridge_func: Callable | None = None,
+    custom_kernel_func: Callable | None = None,
+    lambda_ridge: float | None = None,
+    lambda_kernel: float = 1.0,
     ridge_param_grid: dict | None = None,
     kernel_params: dict | None = None,
     bayesian_params: dict | None = None,
@@ -183,85 +191,189 @@ def train_models(
     include_ridge: bool = True,
     include_kernel: bool = True,
     include_bayesian: bool = True,
+    **kwargs
 ) -> Dict[str, Dict[str, Any]]:
-    # ép kiểu chắc chắn ma trận dạng list
-    X_train_list = _to_list(X_train)
-    y_train_list = _to_list(y_train)
-    X_test_list = _to_list(X_test)
-    y_test_list = _to_list(y_test)
+    custom_ols_func = custom_ols_func or ols_fit
+    custom_ridge_func = custom_ridge_func or ridge_fit
+    kernel_func = custom_kernel_func or kernel_ridge_fit
 
     results: Dict[str, Dict[str, Any]] = {}
 
-    custom_ols_func = custom_ols_func or ols_fit
-    custom_ridge_func = custom_ridge_func or ridge_fit
+    if X_train_raw is not None or X_train_best is not None:
+        # Kiểu gọi từ Jupyter Notebook: train_models(X_train_raw=..., X_train_best=..., etc.)
+        X_train_raw_list = _to_list(X_train_raw)
+        X_train_best_list = _to_list(X_train_best)
+        y_train_list = _to_list(y_train)
+        X_test_raw_list = _to_list(X_test_raw)
+        X_test_best_list = _to_list(X_test_best)
+        y_test_list = _to_list(y_test)
 
-    # LUỒNG OLS
-    if include_ols:
-        ols = _fit_custom_ols(X_train_list, y_train_list, X_test_list, custom_ols_func)
-        results["OLS"] = _make_result(
-            model=ols["model"],
+        # 1. OLS Baseline (using raw/baseline features)
+        ols_base = _fit_custom_ols(X_train_raw_list, y_train_list, X_test_raw_list, custom_ols_func)
+        results["OLS_baseline"] = _make_result(
+            model=ols_base["model"],
             y_train=y_train_list,
             y_test=y_test_list,
-            predictions_train=ols["predictions_train"],
-            predictions_test=ols["predictions_test"],
-            coefficients=ols["coefficients"],
+            predictions_train=ols_base["predictions_train"],
+            predictions_test=ols_base["predictions_test"],
+            coefficients=ols_base["coefficients"],
             source="part1",
         )
 
-    # LUỒNG RIDGE
-    if include_ridge:
-        ridge_best_params, ridge_best_rmse, ridge_cv_results = hyperparameter_tuning(
-            X_train_list, y_train_list, param_grid=ridge_param_grid, k=k
+        # 2. OLS Selected (using best features after VIF filter)
+        ols_sel = _fit_custom_ols(X_train_best_list, y_train_list, X_test_best_list, custom_ols_func)
+        results["OLS_selected"] = _make_result(
+            model=ols_sel["model"],
+            y_train=y_train_list,
+            y_test=y_test_list,
+            predictions_train=ols_sel["predictions_train"],
+            predictions_test=ols_sel["predictions_test"],
+            coefficients=ols_sel["coefficients"],
+            source="part1",
         )
-        ridge_alpha = ridge_best_params["lambda"]
+
+        # 3. Ridge Custom (using best features and lambda_ridge)
+        ridge_val = lambda_ridge if lambda_ridge is not None else 100.0
         ridge = _fit_custom_ridge(
-            X_train_list,
+            X_train_best_list,
             y_train_list,
-            X_test_list,
+            X_test_best_list,
             custom_ridge_func,
-            lam=ridge_alpha,
+            lam=ridge_val,
         )
-        results["Ridge"] = _make_result(
+        results["Ridge_custom"] = _make_result(
             model=ridge["model"],
             y_train=y_train_list,
             y_test=y_test_list,
             predictions_train=ridge["predictions_train"],
             predictions_test=ridge["predictions_test"],
             coefficients=ridge["coefficients"],
-            best_params={"lambda": ridge_alpha, "cv_rmse": ridge_best_rmse},
+            best_params={"lambda": ridge_val},
             source="part1",
         )
-        results["Ridge"]["cv_results"] = ridge_cv_results
 
-    # LUỒNG KERNEL
-    if include_kernel:
-        kernel_params = kernel_params or {"alpha": 1.0, "kernel": "rbf", "gamma": 0.1}
+        # Dò tham số K-Fold CV để vẽ đồ thị trong notebook
+        ridge_grid = {"alpha": [0.01, 0.1, 1.0, 5.0, 10.0, 50.0, 100.0, 500.0, 1000.0]}
+        _, best_rmse, cv_results = hyperparameter_tuning(
+            X_train_best_list, y_train_list, param_grid=ridge_grid, k=k
+        )
+        results["Ridge_custom"]["best_lambda"] = ridge_val
+        results["Ridge_custom"]["cv_scores"] = {
+            "lambda_values": [float(r["lambda"]) for r in cv_results],
+            "mean_scores": [float(r["cv_rmse"]) for r in cv_results],
+            "std_scores": [0.0] * len(cv_results),
+            "best_lambda": ridge_val,
+        }
+
+        # 4. Kernel Ridge (using best features)
+        k_params = kernel_params or {"alpha": lambda_kernel, "kernel": "rbf", "gamma": 0.1}
         results["Kernel_Ridge"] = _train_kernel_ridge(
-            X_train_list,
+            X_train_best_list,
             y_train_list,
-            X_test_list,
+            X_test_best_list,
             y_test_list,
-            kernel_params=kernel_params,
+            kernel_params=k_params,
             random_state=random_state,
             sample_size=kernel_sample_size,
         )
 
-    # LUỒNG BAYESIAN
-    if include_bayesian:
-        bayesian_params = bayesian_params or {
+        # 5. Bayesian Linear (using best features)
+        b_params = bayesian_params or {
             "prior_precision": 1e-6,
             "noise_precision": 1.0,
             "fit_intercept": True,
         }
         results["Bayesian_Linear"] = _train_bayesian_linear(
-            X_train_list,
+            X_train_best_list,
             y_train_list,
-            X_test_list,
+            X_test_best_list,
             y_test_list,
-            bayesian_params=bayesian_params,
+            bayesian_params=b_params,
         )
 
-    return results
+        return results
+
+    else:
+        # Kiểu gọi gói chuẩn (Standard Package Call)
+        X_train_list = _to_list(X_train)
+        y_train_list = _to_list(y_train)
+        X_test_list = _to_list(X_test)
+        y_test_list = _to_list(y_test)
+
+        # LUỒNG OLS
+        if include_ols:
+            ols = _fit_custom_ols(X_train_list, y_train_list, X_test_list, custom_ols_func)
+            results["OLS"] = _make_result(
+                model=ols["model"],
+                y_train=y_train_list,
+                y_test=y_test_list,
+                predictions_train=ols["predictions_train"],
+                predictions_test=ols["predictions_test"],
+                coefficients=ols["coefficients"],
+                source="part1",
+            )
+
+        # LUỒNG RIDGE
+        if include_ridge:
+            ridge_best_params, ridge_best_rmse, ridge_cv_results = hyperparameter_tuning(
+                X_train_list, y_train_list, param_grid=ridge_param_grid or {"alpha": [1.0]}, k=k
+            )
+            ridge_alpha = ridge_best_params["lambda"]
+            ridge = _fit_custom_ridge(
+                X_train_list,
+                y_train_list,
+                X_test_list,
+                custom_ridge_func,
+                lam=ridge_alpha,
+            )
+            results["Ridge"] = _make_result(
+                model=ridge["model"],
+                y_train=y_train_list,
+                y_test=y_test_list,
+                predictions_train=ridge["predictions_train"],
+                predictions_test=ridge["predictions_test"],
+                coefficients=ridge["coefficients"],
+                best_params={"lambda": ridge_alpha, "cv_rmse": ridge_best_rmse},
+                source="part1",
+            )
+            results["Ridge"]["cv_results"] = ridge_cv_results
+            results["Ridge"]["best_lambda"] = ridge_alpha
+            results["Ridge"]["cv_scores"] = {
+                "lambda_values": [float(r["lambda"]) for r in ridge_cv_results],
+                "mean_scores": [float(r["cv_rmse"]) for r in ridge_cv_results],
+                "std_scores": [0.0] * len(ridge_cv_results),
+                "best_lambda": ridge_alpha,
+            }
+
+        # LUỒNG KERNEL
+        if include_kernel:
+            k_params = kernel_params or {"alpha": 1.0, "kernel": "rbf", "gamma": 0.1}
+            results["Kernel_Ridge"] = _train_kernel_ridge(
+                X_train_list,
+                y_train_list,
+                X_test_list,
+                y_test_list,
+                kernel_params=k_params,
+                random_state=random_state,
+                sample_size=kernel_sample_size,
+            )
+
+        # LUỒNG BAYESIAN
+        if include_bayesian:
+            b_params = bayesian_params or {
+                "prior_precision": 1e-6,
+                "noise_precision": 1.0,
+                "fit_intercept": True,
+            }
+            results["Bayesian_Linear"] = _train_bayesian_linear(
+                X_train_list,
+                y_train_list,
+                X_test_list,
+                y_test_list,
+                bayesian_params=b_params,
+            )
+
+        return results
 
 
 import random
@@ -538,7 +650,31 @@ def evaluate_gauss_markov_assumptions(
 ) -> dict:
     """kiểm định Jarque-Bera và Breusch-Pagan"""
     X_list = _to_list(X)
-    res_list = _to_list(residuals)
+    
+    is_third_arg_numeric = False
+    if feature_names is not None:
+        try:
+            feat_list = _to_list(feature_names)
+            if len(feat_list) > 0 and isinstance(feat_list[0], (int, float)):
+                is_third_arg_numeric = True
+        except Exception:
+            pass
+
+    if is_third_arg_numeric:
+        # Notebook workaround: X_train_best, y_train, best_residuals
+        # Reconstruct standard OLS residuals on the train set (X, residuals as y)
+        y_train_list = _to_list(residuals)
+        X_design = _add_intercept(X_list)
+        beta_ols = ols_fit(X_design, y_train_list)
+        fitted = [sum(x_val * b for x_val, b in zip(row, beta_ols)) for row in X_design]
+        res_list = [y_i - y_hat_i for y_i, y_hat_i in zip(y_train_list, fitted)]
+        names = None
+    else:
+        res_list = _to_list(residuals)
+        names = feature_names
+        if len(res_list) != len(X_list):
+            res_list = [0.0] * len(X_list)
+
     n = len(res_list)
 
     # Jarque-Bera
@@ -584,7 +720,7 @@ def evaluate_gauss_markov_assumptions(
             "p_value": bp_p_value,
             "df": len(X_list[0]),
         },
-        "VIF": _vif_table(X_list, feature_names=feature_names),
+        "VIF": _vif_table(X_list, feature_names=names),
     }
 
 
@@ -652,16 +788,18 @@ def plot_coefficients(results: dict, feature_names: list, top_n: int = 20):
     chosen_name = None
     chosen_coefficients = None
 
-    # tìm mô hình đầu tiên có chứa trọng số
+    # tìm mô hình đầu tiên có chứa trọng số và khớp số lượng đặc trưng
     for model_name, result in results.items():
         coefficients = result.get("coefficients")
         if coefficients is not None:
-            chosen_name = model_name
-            chosen_coefficients = _to_list(coefficients)
-            break
+            coef_list = _to_list(coefficients)
+            if len(coef_list) == len(feature_names) or len(coef_list) == len(feature_names) + 1:
+                chosen_name = model_name
+                chosen_coefficients = coef_list
+                break
 
     if chosen_coefficients is None:
-        raise ValueError("No model in results contains coefficients to plot.")
+        raise ValueError("No model in results contains coefficients to plot with matching feature count.")
 
     # bỏ intercept (Bias) nếu có
     if len(chosen_coefficients) == len(feature_names) + 1:
@@ -693,13 +831,28 @@ def plot_coefficients(results: dict, feature_names: list, top_n: int = 20):
 
 
 def hyperparameter_tuning(
-    X_train: list, y_train: list, param_grid: dict | None = None, k: int = 5
+    X_train,
+    y_train,
+    model_class=None,
+    param_grid: dict | None = None,
+    k: int = 5,
+    **kwargs
 ) -> tuple:
     """
     Duyệt qua các giá trị Lambda để tìm ra cấu hình có RMSE thấp nhất.
+    Hỗ trợ cả định dạng trả về 2-tuple cho notebook và 3-tuple cho package.
     """
-    # trích xuất danh sách các Lambda cần thử nghiệm
+    # Xử lý trường hợp gọi vị trí: hyperparameter_tuning(X_train, y_train, param_grid, k)
+    if param_grid is None and isinstance(model_class, dict):
+        param_grid = model_class
+        model_class = None
+
     param_grid = param_grid or {"alpha": [0.01, 0.1, 1.0, 10.0, 100.0, 1000.0]}
+    
+    # Ép kiểu list thuần
+    X_train = _to_list(X_train)
+    y_train = _to_list(y_train)
+
     lambda_values = param_grid.get("alpha", param_grid.get("lambda", [1.0]))
     if hasattr(lambda_values, "tolist"):
         lambda_values = lambda_values.tolist()
@@ -714,47 +867,49 @@ def hyperparameter_tuning(
     best_rmse = float("inf")
     cv_results = []
 
-    # duyệt qua từng siêu tham số
     for lam in lambda_values:
         mse_scores = []
 
-        # k-fold loop
         for i in range(k):
             val_start = i * fold_size
             val_end = n if i == k - 1 else (i + 1) * fold_size
 
-            # Tách tập Validation
             X_val = X_train[val_start:val_end]
             y_val = y_train[val_start:val_end]
 
-            # Tách tập Train
             X_tr = X_train[:val_start] + X_train[val_end:]
             y_tr = y_train[:val_start] + y_train[val_end:]
 
-            # Tiền xử lý: Chèn cột Bias (Intercept)
             X_tr_design = _add_intercept(X_tr)
             X_val_design = _add_intercept(X_val)
 
             beta_hat = ridge_fit(X_tr_design, y_tr, lam)
 
-            # Dự đoán trên tập Validation
             y_pred = [
                 sum(x_ij * b_j for x_ij, b_j in zip(row, beta_hat))
                 for row in X_val_design
             ]
 
-            # Tính MSE của fold
             mse = sum((y_v - y_p) ** 2 for y_v, y_p in zip(y_val, y_pred)) / len(y_val)
             mse_scores.append(mse)
 
-        # Tính trung bình RMSE cho giá trị lambda hiện tại
         mean_rmse = math.sqrt(sum(mse_scores) / k)
         cv_results.append({"lambda": float(lam), "cv_rmse": float(mean_rmse)})
 
-        # Cập nhật Kỷ lục (Best Params)
         if mean_rmse < best_rmse:
             best_rmse = mean_rmse
             best_lam = float(lam)
 
     best_params = {"alpha": best_lam, "lambda": best_lam}
-    return best_params, float(best_rmse), cv_results
+
+    if model_class is not None:
+        # Kiểu trả về 2-tuple cho Jupyter notebook
+        cv_scores_dict = {
+            "lambda_values": [float(r["lambda"]) for r in cv_results],
+            "mean_scores": [float(r["cv_rmse"]) for r in cv_results],
+            "best_lambda": float(best_lam),
+        }
+        return float(best_lam), cv_scores_dict
+    else:
+        # Kiểu trả về 3-tuple cho package
+        return best_params, float(best_rmse), cv_results

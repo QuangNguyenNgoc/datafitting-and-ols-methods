@@ -110,11 +110,11 @@
 #counter(page).update(1)
 #show: chic.with(
   chic-header(
-    left-side: hf-style[*FIT-HCMUS*],
-    right-side: hf-style[*University of Science - VNUHCM*],
+    left-side: hf-style[Khoa Công nghệ Thông tin - ĐHKHTN],
+    right-side: hf-style[Trường Đại học Khoa học Tự nhiên - ĐHQG-HCM],
   ),
   chic-footer(
-    left-side: hf-style[*Toán ứng dụng và thống kê*],
+    left-side: hf-style[Toán ứng dụng và thống kê],
     right-side: hf-style(strong(context [#counter(page).display() / #counter(page).final().at(0)])),
   ),
   chic-separator(0.6pt + rgb("#A5B4D6")),
@@ -130,10 +130,8 @@
 
 #include "chapters/group_work.typ"
 
-#include "chapters/intro.typ"
-#include "chapters/part1_gauss.typ"
-#include "chapters/part2_decomposition.typ"
-#include "chapters/part3_solve_analysis.typ"
-#include "chapters/conclude.typ"
-#include "chapters/appendix.typ"
-#include "chapters/references.typ"
+#include "chapters/01_part1.typ"
+#include "chapters/02_part2.typ"
+#include "chapters/03_conclusion.typ"
+#include "chapters/04_references.typ"
+#include "chapters/05_appendix.typ"
