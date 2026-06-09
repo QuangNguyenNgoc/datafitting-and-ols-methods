@@ -84,6 +84,7 @@ def hat_matrix(X: list[list[float]]) -> list[list[float]]:
         - Đối xứng: H^T = H
         - tr(H) = rank(X) = p+1
     """
+    # ===== Tìm H ====
     X_list = [[float(v) for v in row] for row in X]
 
     # Phân rã SVD
@@ -103,6 +104,29 @@ def hat_matrix(X: list[list[float]]) -> list[list[float]]:
                 for b in range(m):
                     H[a][b] += U[a][col] * U[b][col]
 
+    # ==== kiểm tra idempotent ====
+    is_idempotent = True
+    H_square = [[0.0] * m for _ in range(m)]
+
+    # Tính H_square = H x H
+    for i in range(m):
+        for j in range(m):
+            for x in range(m):
+                H_square[i][j] += H[i][x] * H[x][j]
+
+    # So sánh H_square với H (sai số 1e-9)
+    for i in range(m):
+        for j in range(m):
+            if abs(H_square[i][j] - H[i][j]) > 1e-9:
+                is_idempotent = False
+                break
+        if not is_idempotent:
+            break
+
+    if is_idempotent:
+        print("Ma trận H thỏa mãn tính lũy đẳng (H^2 = H).")
+    else:
+        print("Ma trận H bị vi phạm tính lũy đẳng!")
     return H
 
 
