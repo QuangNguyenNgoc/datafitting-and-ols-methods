@@ -8,12 +8,7 @@ tính VIF và minh họa định lý Gauss-Markov.
 import math
 import random
 
-import numpy as np
-import scipy.stats as stats
 import pandas as pd
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-import statsmodels.api as sm
-from statsmodels.stats.outliers_influence import variance_inflation_factor
 
 from utils.matrix_utils import (
     mat_transpose,
@@ -23,32 +18,90 @@ from utils.matrix_utils import (
     matrix_vector_multiply,
 )
 from utils.inverse import inverse
+from utils.decomposition import svd_decomp
 
 from part1.utils_verif import _student_t_sf, _student_t_ppf
+
+_EPS = 1e-9
 
 
 def ols_fit(X, y):
     """
-    1. Tính vector hệ số beta_hat và phương sai sai số sigma2_hat.
+    1. Tính vector hệ số beta_hat bằng phương pháp OLS.
 
     Công thức toán học:
         beta_hat = (X^T X)^{-1} X^T y
-        sigma2_hat = RSS / (n - p)
+
+    Cài đặt bằng Economic SVD thuần Python (svd_decomp từ utils/decomposition.py):
+        X = U Sigma V^T  =>  beta_hat = V Sigma^{-1} U^T y
+
+    Không dùng np.linalg.svd.
+
+    Tham số:
+        X: list of lists (n x p)
+        y: list (n,)
+
+    Trả về:
+        beta: list (p,)
     """
-    model = sm.OLS(y, X).fit()
-    return np.array(model.params)
+    X_list = [[float(v) for v in row] for row in X]
+    y_list = [float(v) for v in y]
+
+    U, Sigma, V_T = svd_decomp(X_list)
+    k = min(len(Sigma), len(Sigma[0]))
+    s = [Sigma[i][i] for i in range(k)]
+
+    m = len(U)    # số hàng
+    n = len(V_T)  # số cột = số tham số
+    r = len(s)
+
+    # Bước 1: U^T y  (thuần Python)
+    Ut_y = [sum(U[j][i] * y_list[j] for j in range(m)) for i in range(r)]
+
+    # Bước 2: Sigma^+ (U^T y) — chỉ chia cho sigma_i > EPS
+    sp_Uty = [Ut_y[i] / s[i] if s[i] > _EPS else 0.0 for i in range(r)]
+
+    # Bước 3: beta = V (Sigma^+ U^T y)
+    beta = [sum(V_T[i][j] * sp_Uty[i] for i in range(r)) for j in range(n)]
+
+    return beta
 
 
 def hat_matrix(X):
     """
-    2. Tính ma trận chiếu H (Hat matrix) và kiểm tra tính lũy đẳng (idempotent).
+    2. Tính ma trận chiếu H (Hat matrix).
 
     Công thức toán học:
-        H = X(X^T X)^{-1} X^T
-    Điều kiện lũy đẳng: H @ H = H
+        H = X (X^T X)^{-1} X^T
+
+    Cài đặt bằng SVD thuần Python: X = U Sigma V^T
+        => H = U_r U_r^T
+    trong đó U_r là các cột ứng với sigma_i > EPS.
+
+    Tính chất: H^2 = H, H^T = H, tr(H) = rank(X).
+
+    Tham số:
+        X: list of lists (n x p)
+
+    Trả về:
+        H: list of lists (n x n)
     """
-    X_mat = np.array(X)
-    return X_mat @ np.linalg.pinv(X_mat)
+    X_list = [[float(v) for v in row] for row in X]
+
+    U, Sigma, _ = svd_decomp(X_list)
+    k = min(len(Sigma), len(Sigma[0]))
+    s = [Sigma[i][i] for i in range(k)]
+    m = len(U)
+
+    # H[a][b] = sum_{col: s[col]>EPS} U[a][col] * U[b][col]
+    H = [[0.0] * m for _ in range(m)]
+    for col in range(k):
+        if s[col] > _EPS:
+            for a in range(m):
+                for b in range(m):
+                    H[a][b] += U[a][col] * U[b][col]
+
+    return H
 
 
 def model_metrics(y: list, y_hat: list, p: int) -> dict:
@@ -152,20 +205,49 @@ def vif(X):
        để kiểm tra hiện tượng đa cộng tuyến.
 
     Công thức: VIF_j = 1 / (1 - R^2_j)
+
+    Trong đó R^2_j là hệ số xác định khi hồi quy biến thứ j lên tất cả
+    các biến còn lại (có hệ số chặn). Cài đặt thuần Python, gọi ols_fit.
+
+    Tham số:
+        X: list of lists (n x p), KHÔNG bao gồm cột hệ số chặn
+
+    Trả về:
+        DataFrame với cột Feature và VIF_Score
     """
-    X_df = pd.DataFrame(X)
-    vif_data = pd.DataFrame()
-    vif_data["Feature"] = X_df.columns
+    X_list = [[float(v) for v in row] for row in X]
+    n = len(X_list)
+    p = len(X_list[0])
 
     vif_values = []
-    for i in range(X_df.shape[1]):
-        try:
-            val = variance_inflation_factor(X_df.values, i)
-        except Exception:
-            val = np.inf
-        vif_values.append(val)
+    for j in range(p):
+        # Biến j làm mục tiêu
+        y_j = [X_list[i][j] for i in range(n)]
 
-    vif_data["VIF_Score"] = vif_values
+        # Các biến còn lại + hệ số chặn làm đặc trưng
+        other_cols = [c for c in range(p) if c != j]
+        X_j = [[1.0] + [X_list[i][c] for c in other_cols] for i in range(n)]
+
+        # Hồi quy OLS thuần Python
+        beta_j = ols_fit(X_j, y_j)
+        y_hat_j = [
+            sum(X_j[i][c] * beta_j[c] for c in range(len(beta_j)))
+            for i in range(n)
+        ]
+
+        # R^2 = 1 - RSS/TSS
+        y_mean_j = sum(y_j) / n
+        ss_res = sum((y_j[i] - y_hat_j[i]) ** 2 for i in range(n))
+        ss_tot = sum((y_j[i] - y_mean_j) ** 2 for i in range(n))
+
+        r2_j = 1.0 - ss_res / ss_tot if ss_tot > 1e-12 else 0.0
+        vif_j = 1.0 / (1.0 - r2_j) if (1.0 - r2_j) > 1e-12 else float("inf")
+        vif_values.append(vif_j)
+
+    vif_data = pd.DataFrame({
+        "Feature": list(range(p)),
+        "VIF_Score": vif_values,
+    })
     return vif_data
 
 
