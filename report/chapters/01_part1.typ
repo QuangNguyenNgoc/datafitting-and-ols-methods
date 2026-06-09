@@ -144,7 +144,7 @@ Cả bốn hàm `ols_fit`, `hat_matrix`, `ridge_fit` và `vif` đều được k
 - `hat_matrix`: Tính lũy đẳng $max|H^2 - H| = 6.9 times 10^(-17)$; đối xứng tuyệt đối; $upright(tr)(H) = p + 1$ sai số $< 10^(-15)$.
 - `ridge_fit`: Sai số so với nghiệm chuẩn `numpy.linalg.solve` đạt $4.4 times 10^(-16)$.
 - `vif`: VIF $approx 1$ trên dữ liệu độc lập; VIF $> 13000$ khi biến thứ ba $approx 0.99 x_1$ (đa cộng tuyến mạnh).
-== Nhóm 1: Ước lượng và Đánh giá độ phù hợp
+== Ước lượng và Đánh giá độ phù hợp
 
 === Phân rã phương sai và Thống kê tổng thể (`model_metrics`)
 
@@ -205,7 +205,7 @@ $ F = ((T S S - R S S) / (k - 1)) / ("RSS" / (n - k)) $
 Áp dụng Phép biến đổi Paulson (1942) nhằm xấp xỉ phân phối Fisher-F bất đối xứng thành phân phối chuẩn tắc $Z$, cho phép thuật toán đạt độ phức tạp $O(1)$.
 
 
-== Nhóm 2: Suy diễn Thống kê và Định lý Gauss-Markov
+== Suy diễn Thống kê và Định lý Gauss-Markov
 
 === Định lý Gauss-Markov và Mô phỏng Monte Carlo (`gauss_markov_simulation`)
 
@@ -243,7 +243,7 @@ $ C I = hat(beta)_j plus.minus t_(alpha/2, n-k) times S E(hat(beta)_j) $
 - Sử dụng Khai triển Cornish-Fisher để tìm giá trị tới hạn (Critical Value) cho khoảng tin cậy.
 Việc chuẩn hóa phân phối $t$ bằng các phép biến đổi giải tích giúp thuật toán tính xác suất đạt độ phức tạp $O(1)$.
 
-== Nhóm 3: Chẩn đoán và Tổng quát hóa Mô hình
+== Chẩn đoán và Tổng quát hóa Mô hình
 
 === Phân tích Phần dư (Residual Analysis - `residual_plots`)
 
