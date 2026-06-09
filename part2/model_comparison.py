@@ -30,6 +30,7 @@ except Exception:
 from part1.ols_implementation import ols_fit, coef_inference, vif, model_metrics
 from part1.ridge_lasso import ridge_fit
 from part1.cross_validation import kfold_cv
+
 custom_ridge_fit = ridge_fit
 
 
@@ -39,7 +40,11 @@ class DiagnosticsResult(dict):
     def sort_values(self, *args, **kwargs):
         vif_table = self["VIF"]
         by = kwargs.get("by")
-        if by == "VIF" and "VIF" not in vif_table.columns and "VIF_Score" in vif_table.columns:
+        if (
+            by == "VIF"
+            and "VIF" not in vif_table.columns
+            and "VIF_Score" in vif_table.columns
+        ):
             kwargs["by"] = "VIF_Score"
         return vif_table.sort_values(*args, **kwargs)
 
@@ -100,7 +105,9 @@ def _make_result(
     result = {
         "model": model,
         "coefficients": coefficients_list,
-        "feature_coefficients": coefficients_list[1:] if coefficients_list is not None else None,
+        "feature_coefficients": (
+            coefficients_list[1:] if coefficients_list is not None else None
+        ),
         "predictions_train": predictions_train,
         "predictions_test": predictions_test,
         "predictions": predictions_test,
@@ -191,7 +198,7 @@ def train_models(
     include_ridge: bool = True,
     include_kernel: bool = True,
     include_bayesian: bool = True,
-    **kwargs
+    **kwargs,
 ) -> Dict[str, Dict[str, Any]]:
     custom_ols_func = custom_ols_func or ols_fit
     custom_ridge_func = custom_ridge_func or ridge_fit
@@ -209,7 +216,9 @@ def train_models(
         y_test_list = _to_list(y_test)
 
         # 1. OLS Baseline (using raw/baseline features)
-        ols_base = _fit_custom_ols(X_train_raw_list, y_train_list, X_test_raw_list, custom_ols_func)
+        ols_base = _fit_custom_ols(
+            X_train_raw_list, y_train_list, X_test_raw_list, custom_ols_func
+        )
         results["OLS_baseline"] = _make_result(
             model=ols_base["model"],
             y_train=y_train_list,
@@ -221,7 +230,9 @@ def train_models(
         )
 
         # 2. OLS Selected (using best features after VIF filter)
-        ols_sel = _fit_custom_ols(X_train_best_list, y_train_list, X_test_best_list, custom_ols_func)
+        ols_sel = _fit_custom_ols(
+            X_train_best_list, y_train_list, X_test_best_list, custom_ols_func
+        )
         results["OLS_selected"] = _make_result(
             model=ols_sel["model"],
             y_train=y_train_list,
@@ -266,7 +277,11 @@ def train_models(
         }
 
         # 4. Kernel Ridge (using best features)
-        k_params = kernel_params or {"alpha": lambda_kernel, "kernel": "rbf", "gamma": 0.1}
+        k_params = kernel_params or {
+            "alpha": lambda_kernel,
+            "kernel": "rbf",
+            "gamma": 0.1,
+        }
         results["Kernel_Ridge"] = _train_kernel_ridge(
             X_train_best_list,
             y_train_list,
@@ -302,7 +317,9 @@ def train_models(
 
         # LUỒNG OLS
         if include_ols:
-            ols = _fit_custom_ols(X_train_list, y_train_list, X_test_list, custom_ols_func)
+            ols = _fit_custom_ols(
+                X_train_list, y_train_list, X_test_list, custom_ols_func
+            )
             results["OLS"] = _make_result(
                 model=ols["model"],
                 y_train=y_train_list,
@@ -315,8 +332,13 @@ def train_models(
 
         # LUỒNG RIDGE
         if include_ridge:
-            ridge_best_params, ridge_best_rmse, ridge_cv_results = hyperparameter_tuning(
-                X_train_list, y_train_list, param_grid=ridge_param_grid or {"alpha": [1.0]}, k=k
+            ridge_best_params, ridge_best_rmse, ridge_cv_results = (
+                hyperparameter_tuning(
+                    X_train_list,
+                    y_train_list,
+                    param_grid=ridge_param_grid or {"alpha": [1.0]},
+                    k=k,
+                )
             )
             ridge_alpha = ridge_best_params["lambda"]
             ridge = _fit_custom_ridge(
@@ -443,7 +465,9 @@ def _train_bayesian_linear(
     )
 
 
-def _vif_table_legacy_unused(X_list: list, feature_names: list | None = None) -> pd.DataFrame:
+def _vif_table_legacy_unused(
+    X_list: list, feature_names: list | None = None
+) -> pd.DataFrame:
     X_list = _to_list(X_list)
     names = feature_names or [f"x{i}" for i in range(len(X_list[0]))]
 
@@ -463,8 +487,8 @@ def run_diagnostics_legacy_unused(
     names = feature_names or [f"x{i}" for i in range(len(X_list[0]))]
     X_design = _add_intercept(X_list)
 
-    # Tính Beta bằng hàm tự code
-    beta = ols_fit(X_design, y_list)
+    # Tính Beta
+    beta, _ = ols_fit(X_design, y_list)
 
     # Tính Dự đoán & Phần dư bằng List Comprehension
     fitted = [sum(x_val * b for x_val, b in zip(row, beta)) for row in X_design]
@@ -567,14 +591,18 @@ def run_diagnostics(
     except ValueError:
         inference_df = None
 
-    return DiagnosticsResult({
-        "coefficients": beta,
-        "predictions_train": fitted,
-        "residuals_train": residuals,
-        "sigma2": float(sigma2),
-        "VIF": _vif_table(X_list, feature_names=names, custom_vif_func=custom_vif_func),
-        "coef_inference": inference_df,
-    })
+    return DiagnosticsResult(
+        {
+            "coefficients": beta,
+            "predictions_train": fitted,
+            "residuals_train": residuals,
+            "sigma2": float(sigma2),
+            "VIF": _vif_table(
+                X_list, feature_names=names, custom_vif_func=custom_vif_func
+            ),
+            "coef_inference": inference_df,
+        }
+    )
 
 
 def _regularized_gamma_p(a: float, x: float) -> float:
@@ -650,7 +678,7 @@ def evaluate_gauss_markov_assumptions(
 ) -> dict:
     """kiểm định Jarque-Bera và Breusch-Pagan"""
     X_list = _to_list(X)
-    
+
     is_third_arg_numeric = False
     if feature_names is not None:
         try:
@@ -665,7 +693,7 @@ def evaluate_gauss_markov_assumptions(
         # Reconstruct standard OLS residuals on the train set (X, residuals as y)
         y_train_list = _to_list(residuals)
         X_design = _add_intercept(X_list)
-        beta_ols = ols_fit(X_design, y_train_list)
+        beta_ols, _ = ols_fit(X_design, y_train_list)
         fitted = [sum(x_val * b for x_val, b in zip(row, beta_ols)) for row in X_design]
         res_list = [y_i - y_hat_i for y_i, y_hat_i in zip(y_train_list, fitted)]
         names = None
@@ -693,7 +721,7 @@ def evaluate_gauss_markov_assumptions(
 
     # Hồi quy bình phương phần dư theo X (Mô hình phụ)
     try:
-        beta_aux = ols_fit(X_aux, squared_res)
+        beta_aux, _ = ols_fit(X_aux, squared_res)
     except ValueError:
         beta_aux = ridge_fit(X_aux, squared_res, 1e-8)
     pred_aux = [sum(x_val * b for x_val, b in zip(row, beta_aux)) for row in X_aux]
@@ -793,13 +821,18 @@ def plot_coefficients(results: dict, feature_names: list, top_n: int = 20):
         coefficients = result.get("coefficients")
         if coefficients is not None:
             coef_list = _to_list(coefficients)
-            if len(coef_list) == len(feature_names) or len(coef_list) == len(feature_names) + 1:
+            if (
+                len(coef_list) == len(feature_names)
+                or len(coef_list) == len(feature_names) + 1
+            ):
                 chosen_name = model_name
                 chosen_coefficients = coef_list
                 break
 
     if chosen_coefficients is None:
-        raise ValueError("No model in results contains coefficients to plot with matching feature count.")
+        raise ValueError(
+            "No model in results contains coefficients to plot with matching feature count."
+        )
 
     # bỏ intercept (Bias) nếu có
     if len(chosen_coefficients) == len(feature_names) + 1:
@@ -836,7 +869,7 @@ def hyperparameter_tuning(
     model_class=None,
     param_grid: dict | None = None,
     k: int = 5,
-    **kwargs
+    **kwargs,
 ) -> tuple:
     """
     Duyệt qua các giá trị Lambda để tìm ra cấu hình có RMSE thấp nhất.
@@ -848,7 +881,7 @@ def hyperparameter_tuning(
         model_class = None
 
     param_grid = param_grid or {"alpha": [0.01, 0.1, 1.0, 10.0, 100.0, 1000.0]}
-    
+
     # Ép kiểu list thuần
     X_train = _to_list(X_train)
     y_train = _to_list(y_train)

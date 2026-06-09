@@ -35,30 +35,37 @@ def ols_fit(X, y):
 
     Cài đặt bằng Economic SVD thuần Python (svd_decomp từ utils/decomposition.py):
         X = U Sigma V^T  =>  beta_hat = V Sigma^{-1} U^T y
-
-    Không dùng np.linalg.svd.
     """
     X_list = [[float(v) for v in row] for row in X]
     y_list = [float(v) for v in y]
 
-    U, Sigma, V_T = svd_decomp(X_list)
-    k = min(len(Sigma), len(Sigma[0]))
-    s = [Sigma[i][i] for i in range(k)]
+    n_samples = len(X_list)
+    n_features = len(X_list[0])
 
-    m = len(U)       # số hàng
-    n = len(V_T)     # số cột = số tham số
+    U, Sigma, V_T = svd_decomp(X_list)
+    k_svd = min(len(Sigma), len(Sigma[0]))
+    s = [Sigma[i][i] for i in range(k_svd)]
+
+    m = len(U)
+    n = len(V_T)
     r = len(s)
 
-    # Bước 1: U^T y  (thuần Python)
+    # Bước 1 & 2 & 3: Tính beta_hat bằng SVD
     Ut_y = [sum(U[j][i] * y_list[j] for j in range(m)) for i in range(r)]
-
-    # Bước 2: Sigma^+ (U^T y)
     sp_Uty = [Ut_y[i] / s[i] if s[i] > _EPS else 0.0 for i in range(r)]
-
-    # Bước 3: beta = V (Sigma^+ U^T y)
     beta = [sum(V_T[i][j] * sp_Uty[i] for i in range(r)) for j in range(n)]
 
-    return np.array(beta, dtype=float)
+    # Bước 4: Tính y_hat = X * beta
+    y_hat = []
+    for i in range(n_samples):
+        val = sum(X_list[i][j] * beta[j] for j in range(n_features))
+        y_hat.append(val)
+
+    # Bước 5: Tính RSS và sigma^2
+    rss = sum((y_list[i] - y_hat[i]) ** 2 for i in range(n_samples))
+    sigma2 = rss / (n_samples - n_features) if n_samples > n_features else 0.0
+
+    return beta, sigma2
 
 
 def hat_matrix(X):
@@ -85,7 +92,7 @@ def hat_matrix(X):
 
     m = len(U)
 
-    # H = sum_{col: s[col] > EPS} u_col u_col^T  (thuần Python)
+    # H = sum_{col: s[col] > EPS} u_col u_col^T
     H = [[0.0] * m for _ in range(m)]
     for col in range(k):
         if s[col] > _EPS:
@@ -227,13 +234,10 @@ def vif(X):
 
         # Các biến còn lại + hệ số chặn làm đặc trưng
         other_cols = [c for c in range(p) if c != j]
-        X_j_list = [
-            [1.0] + [X_list[i][c] for c in other_cols]
-            for i in range(n)
-        ]
+        X_j_list = [[1.0] + [X_list[i][c] for c in other_cols] for i in range(n)]
 
-        # Hồi quy OLS (thuần Python qua ols_fit)
-        beta_j = list(ols_fit(X_j_list, y_j))
+        # Hồi quy OLS
+        beta_j, _ = list(ols_fit(X_j_list, y_j))
 
         # Tính y_hat
         y_hat_j = [
@@ -250,10 +254,12 @@ def vif(X):
         vif_j = 1.0 / (1.0 - r2_j) if (1.0 - r2_j) > 1e-12 else float("inf")
         vif_values.append(vif_j)
 
-    vif_data = pd.DataFrame({
-        "Feature": list(range(p)),
-        "VIF_Score": vif_values,
-    })
+    vif_data = pd.DataFrame(
+        {
+            "Feature": list(range(p)),
+            "VIF_Score": vif_values,
+        }
+    )
     return vif_data
 
 
@@ -302,15 +308,21 @@ def gauss_markov_simulation(n_simulations=1000, n_samples=100):
     for j in range(k):
         e_ols = sum(beta_ols_results[j]) / n_simulations
         e_alt = sum(beta_alt_results[j]) / n_simulations
-        var_ols = sum((b - e_ols) ** 2 for b in beta_ols_results[j]) / (n_simulations - 1)
-        var_alt = sum((b - e_alt) ** 2 for b in beta_alt_results[j]) / (n_simulations - 1)
-        report.append({
-            "beta_idx": j,
-            "true_val": true_beta[j],
-            "E_ols": e_ols,
-            "E_alt": e_alt,
-            "Var_ols": var_ols,
-            "Var_alt": var_alt,
-        })
+        var_ols = sum((b - e_ols) ** 2 for b in beta_ols_results[j]) / (
+            n_simulations - 1
+        )
+        var_alt = sum((b - e_alt) ** 2 for b in beta_alt_results[j]) / (
+            n_simulations - 1
+        )
+        report.append(
+            {
+                "beta_idx": j,
+                "true_val": true_beta[j],
+                "E_ols": e_ols,
+                "E_alt": e_alt,
+                "Var_ols": var_ols,
+                "Var_alt": var_alt,
+            }
+        )
 
     return report
