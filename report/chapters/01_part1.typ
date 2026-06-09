@@ -156,9 +156,9 @@ Cả bốn hàm `ols_fit`, `hat_matrix`, `ridge_fit` và `vif` đều được k
 - `hat_matrix`: Tính lũy đẳng $max|H^2 - H| = 6.9 times 10^(-17)$; đối xứng tuyệt đối; $upright(tr)(H) = p + 1$ sai số $< 10^(-15)$.
 - `ridge_fit`: Sai số so với nghiệm chuẩn `numpy.linalg.solve` đạt $4.4 times 10^(-16)$.
 - `vif`: VIF $approx 1$ trên dữ liệu độc lập; VIF $> 13000$ khi biến thứ ba $approx 0.99 x_1$ (đa cộng tuyến mạnh).
-== Nhóm 1: Ước lượng và Đánh giá độ phù hợp
+== Ước lượng và Đánh giá độ phù hợp
 
-=== 1. Phân rã phương sai và Thống kê tổng thể (`model_metrics`)
+=== Phân rã phương sai và Thống kê tổng thể (`model_metrics`)
 
 Để đánh giá chất lượng của mô hình hồi quy tuyến tính OLS, ta cần phân tích các thành phần phương sai và kiểm định sự phù hợp tổng thể của mô hình. Trong phần này, các công thức toán học lõi được cài đặt hoàn toàn từ đầu (from scratch) bằng Đại số tuyến tính.
 
@@ -170,7 +170,7 @@ Trong đó, $H = X(X^T X)^(-1)X^T$ được gọi là Ma trận chiếu (Hat mat
 Định lý toán học chứng minh $H$ có 2 tính chất vô cùng quan trọng:
 - *Tính đối xứng:* $ H^T = (X (X^T X)^(-1) X^T)^T = X ((X^T X)^(-1))^T X^T = X (X^T X)^(-1) X^T = H $
 - *Tính lũy đẳng (Idempotent):* $ H^2 &= H H = X(X^T X)^(-1)X^T X(X^T X)^(-1)X^T \ &= X(X^T X)^(-1) (X^T X) (X^T X)^(-1) X^T = X(X^T X)^(-1)X^T = H $
-*b. Vector phần dư và hệ quả* \
+* (\*) Vector phần dư và hệ quả* \
 - Ta có vector phần dư $e = y - hat(y) = (I - H)y$. \
 *Chứng minh tính trực giao:* Phần dư luôn trực giao với không gian sinh bởi ma trận thiết kế $X$:
 $ X^T e = X^T (I - H) y = (X^T - X^T X (X^T X)^(-1) X^T) y = (X^T - X^T) y = 0 $
@@ -217,9 +217,9 @@ $ F = ((T S S - R S S) / (k - 1)) / ("RSS" / (n - k)) $
 Áp dụng *Phép biến đổi Paulson (1942)* nhằm xấp xỉ phân phối Fisher-F bất đối xứng thành phân phối chuẩn tắc $Z$, cho phép thuật toán đạt độ phức tạp $O(1)$.
 
 
-== Nhóm 2: Suy diễn Thống kê và Định lý Gauss-Markov
+== Suy diễn Thống kê và Định lý Gauss-Markov
 
-=== 2. Định lý Gauss-Markov và Mô phỏng Monte Carlo (`gauss_markov_simulation`)
+=== Định lý Gauss-Markov và Mô phỏng Monte Carlo (`gauss_markov_simulation`)
 
 Định lý Gauss-Markov là nền tảng lý thuyết chứng tỏ sự ưu việt của phương pháp OLS. *Định lý phát biểu rằng:* Dưới các giả định cơ bản (Kỳ vọng sai số bằng 0, Phương sai sai số không đổi và không có tự tương quan), OLS là ước lượng tuyến tính không chệch tốt nhất (*BLUE* - Best Linear Unbiased Estimator).
 
@@ -255,9 +255,9 @@ $ C I = hat(beta)_j plus.minus t_(alpha/2, n-k) times S E(hat(beta)_j) $
 - Sử dụng *Khai triển Cornish-Fisher* để tìm giá trị tới hạn (Critical Value) cho khoảng tin cậy.
 Việc chuẩn hóa phân phối $t$ bằng các phép biến đổi giải tích giúp thuật toán tính xác suất đạt độ phức tạp $O(1)$.
 
-== Nhóm 3: Chẩn đoán và Tổng quát hóa Mô hình
+== Chẩn đoán và Tổng quát hóa Mô hình
 
-=== 4. Phân tích Phần dư (Residual Analysis - `residual_plots`)
+=== Phân tích Phần dư (Residual Analysis - `residual_plots`)
 
 Để kiểm chứng xem dữ liệu có vi phạm các giả định Gauss-Markov hay không, đồ án cài đặt thuật toán vẽ 4 biểu đồ chẩn đoán tiêu chuẩn. Quá trình này đòi hỏi phải tính toán Phần dư chuẩn hóa (Standardized Residuals) và Giá trị đòn bẩy (Leverage).
 
@@ -272,7 +272,7 @@ Việc chuẩn hóa phân phối $t$ bằng các phép biến đổi giải tíc
 3. *Scale-Location:* Dùng để phát hiện hiện tượng phương sai thay đổi (Heteroscedasticity). Trục tung sử dụng $sqrt(|r_i|)$. Nếu các điểm toe ra thành hình cái phễu, phương sai không đồng đều, OLS sẽ mất đi tính hiệu quả tối ưu (không còn là BLUE).
 4. *Residuals vs Leverage:* Xác định các Điểm ảnh hưởng (Influential points). Những điểm nằm ở góc phải (có $h_(i i)$ lớn) và xa trục 0 (có $r_i$ lớn) sẽ làm xô lệch đường hồi quy và cần được loại bỏ.
 
-=== 5. Kiểm định chéo (K-Fold Cross Validation - `kfold_cv`)
+=== Kiểm định chéo (K-Fold Cross Validation - `kfold_cv`)
 
 Việc đánh giá mô hình bằng "RSS" trên tập huấn luyện (Train set) là không đủ, vì khi thêm càng nhiều biến (thậm chí là biến rác), "RSS" luôn có xu hướng giảm, dẫn đến hiện tượng Học vẹt (Overfitting). Đồ án tự cài đặt giải thuật K-Fold Cross Validation để đánh giá chính xác năng lực tổng quát hóa (Generalization) của mô hình.
 
