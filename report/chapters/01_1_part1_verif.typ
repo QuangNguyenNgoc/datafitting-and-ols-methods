@@ -95,3 +95,40 @@ $ C I = hat(beta)_j plus.minus t_(alpha/2, n-k) times S E(hat(beta)_j) $
 - Sử dụng *Phép xấp xỉ đa thức Wallace* cho hàm phân phối tích lũy (CDF) để tính $p$-value.
 - Sử dụng *Khai triển Cornish-Fisher* để tìm giá trị tới hạn (Critical Value) cho khoảng tin cậy.
 Việc chuẩn hóa phân phối $t$ bằng các phép biến đổi giải tích giúp thuật toán tính xác suất đạt độ phức tạp $O(1)$.
+
+== Nhóm 3: Chẩn đoán và Tổng quát hóa Mô hình
+
+=== 4. Phân tích Phần dư (Residual Analysis - `residual_plots`)
+
+Để kiểm chứng xem dữ liệu có vi phạm các giả định Gauss-Markov hay không, đồ án cài đặt thuật toán vẽ 4 biểu đồ chẩn đoán tiêu chuẩn (tương đương với lệnh `plot(lm)` trong ngôn ngữ R). Quá trình này đòi hỏi phải tính toán Phần dư chuẩn hóa (Standardized Residuals) và Giá trị đòn bẩy (Leverage).
+
+*a. Cơ sở Toán học của các chỉ số:*
+- *Giá trị đòn bẩy ($h_(i i)$):* Là các phần tử trên đường chéo chính của Ma trận chiếu $H$. Nó đo lường mức độ "cực đoan" của điểm dữ liệu $X_i$ so với trung tâm dữ liệu.
+- *Phần dư chuẩn hóa ($r_i$):* Để so sánh công bằng, phần dư được chia cho sai số chuẩn tại vị trí của nó:
+  $ r_i = e_i / (hat(sigma) sqrt(1 - h_(i i))) $
+
+*b. Ý nghĩa của 4 biểu đồ chẩn đoán:*
+1. *Residuals vs Fitted:* Kiểm tra tính tuyến tính. Nếu các điểm phân tán ngẫu nhiên quanh trục hoành 0 mà không tạo thành đường cong, mô hình tuyến tính là phù hợp.
+2. *Normal Q-Q:* Kiểm tra phân phối chuẩn. Thuật toán tự cài đặt sử dụng *Phép xấp xỉ Tukey Lambda* để tìm các phân vị lý thuyết (Theoretical Quantiles) thay vì gọi thư viện. Nếu phần dư bám sát đường chéo, giả định phân phối chuẩn được thỏa mãn.
+3. *Scale-Location:* Dùng để phát hiện hiện tượng phương sai thay đổi (Heteroscedasticity). Trục tung sử dụng $sqrt(|r_i|)$. Nếu các điểm toe ra thành hình cái phễu, phương sai không đồng đều, OLS sẽ mất đi tính hiệu quả tối ưu (không còn là BLUE).
+4. *Residuals vs Leverage:* Xác định các Điểm ảnh hưởng (Influential points). Những điểm nằm ở góc phải (có $h_(i i)$ lớn) và xa trục 0 (có $r_i$ lớn) sẽ làm xô lệch đường hồi quy và cần được loại bỏ.
+
+=== 5. Kiểm định chéo (K-Fold Cross Validation - `kfold_cv`)
+
+Việc đánh giá mô hình bằng "RSS" trên tập huấn luyện (Train set) là không đủ, vì khi thêm càng nhiều biến (thậm chí là biến rác), "RSS" luôn có xu hướng giảm, dẫn đến hiện tượng Học vẹt (Overfitting). Đồ án tự cài đặt giải thuật K-Fold Cross Validation để đánh giá chính xác năng lực tổng quát hóa (Generalization) của mô hình.
+
+*a. Thuật toán phân tách:* \
+Tập dữ liệu kích thước $n$ được chia thành $k$ phần rời rạc (folds) có kích thước xấp xỉ nhau: $S_1, S_2, ..., S_k$.
+
+*b. Vòng lặp huấn luyện và đánh giá:* \
+Với mỗi fold $i$ từ 1 đến $k$:
+- Chọn phần $S_i$ làm tập Validation (kích thước $m$). Phần còn lại $S \\ S_i$ làm tập Train.
+- Tìm $hat(beta)^((i))$ bằng OLS trên tập Train.
+- Tính vector dự đoán trên tập Validation: $hat(y)_"val"^((i)) = X_"val"^((i)) hat(beta)^((i))$
+- Tính Lỗi bình phương trung bình ("MSE") cho fold $i$:
+  $ "MSE"_i = 1 / m sum_(j=1)^m (y_("val", j)^((i)) - hat(y)_("val", j)^((i)))^2 $
+
+*c. Điểm đánh giá tổng hợp:* \
+Điểm kiểm định chéo là trung bình cộng của lỗi trên tất cả $k$ vòng lặp:
+$ "CV_Score" = 1 / k sum_(i=1)^k "MSE"_i $
+Thực nghiệm trong đồ án cho thấy: Mô hình đơn giản chứa các biến có ý nghĩa sẽ có $"CV_Score"$ thấp hơn (tốt hơn) so với mô hình bị nhét thêm các biến rác, chứng minh K-Fold CV đã chặn đứng thành công hiện tượng Overfitting.
