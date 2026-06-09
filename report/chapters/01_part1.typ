@@ -60,23 +60,23 @@ Ma trận $H = X (X^T X)^(-1) X^T$ được gọi là *ma trận hình mũ* (hat
 
 === Tính chất và Chứng minh
 
-**(1) Lũy đẳng ($H^2 = H$):**
+*(1) Lũy đẳng ($H^2 = H$):*
 
 $ H^2 = [X(X^T X)^(-1) X^T][X(X^T X)^(-1) X^T] = X(X^T X)^(-1) underbrace((X^T X)(X^T X)^(-1), = I) X^T = H $
 
-**(2) Đối xứng ($H^T = H$):**
+*(2) Đối xứng ($H^T = H$):*
 
 $ H^T = [X(X^T X)^(-1) X^T]^T = X [(X^T X)^(-1)]^T X^T = X (X^T X)^(-1) X^T = H $
 
 vì $(X^T X)$ đối xứng nên $(X^T X)^(-1)$ cũng đối xứng.
 
-**(3) Vết $upright(tr)(H) = p + 1$:**
+*(3) Vết $upright(tr)(H) = p + 1$:*
 
 $ upright(tr)(H) = upright(tr)(X(X^T X)^(-1) X^T) = upright(tr)((X^T X)^(-1) X^T X) = upright(tr)(I_(p+1)) = p + 1 $
 
 sử dụng tính chất vòng của vết: $upright(tr)(A B) = upright(tr)(B A)$.
 
-**(4) Biểu diễn qua SVD (thuần Python):** Với $X = U Sigma V^T$ (tính bởi `svd_decomp` từ `utils/decomposition.py`), ta có $H = U_r U_r^T$ trong đó $U_r$ gồm các cột ứng với $sigma_i > "varepsilon"$. Cài đặt dùng vòng lặp Python thuần: $H[a][b] += U[a][k] times U[b][k]$ cho mỗi $k$ có $sigma_k > "varepsilon"$, không dùng `numpy.linalg.svd`.
+*(4) Biểu diễn qua SVD (thuần Python):* Với $X = U Sigma V^T$ (tính bởi `svd_decomp` từ `utils/decomposition.py`), ta có $H = U_r U_r^T$ trong đó $U_r$ gồm các cột ứng với $sigma_i > "varepsilon"$. Cài đặt dùng vòng lặp Python thuần: $H[a][b] += U[a][k] times U[b][k]$ cho mỗi $k$ có $sigma_k > "varepsilon"$, không dùng `numpy.linalg.svd`.
 
 == Hồi quy Ridge
 
